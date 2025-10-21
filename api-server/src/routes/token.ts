@@ -16,6 +16,14 @@ import { StageAutoScalingService } from '../services/StageAutoScalingService';
 import { ViewerHeartbeatService } from '../services/ViewerHeartbeatService';
 import { logger } from '../utils/logger';
 import { HTTP_STATUS, ERROR_CODES, API_ENDPOINTS } from '../utils/constants';
+import {
+  sendSuccess,
+  sendError,
+  sendValidationError,
+  sendForbidden,
+  sendNotFound,
+  sendInternalError,
+} from '../utils/responseHelper';
 
 const router = Router();
 let ivsService: IVSService;
@@ -37,10 +45,7 @@ router.post('/publisher', async (req: Request, res: Response) => {
     const { userId } = req.body;
 
     if (!userId) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: '缺少 userId',
-      });
+      return sendValidationError(res, '缺少 userId', ['userId']);
     }
 
     logger.info('收到主播 Token 請求', { userId });
@@ -53,18 +58,15 @@ router.post('/publisher', async (req: Request, res: Response) => {
     await redis.setPublisherStatus(true);
 
     // 返回完整資訊
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        token: token.token,
-        participantId: token.participantId,
-        userId: token.userId,
-        stageArn: token.stageArn,
-        capabilities: token.capabilities,
-        expiresAt: token.expiresAt,
-        whipEndpoint: API_ENDPOINTS.WHIP,
-        expiresIn: Math.floor((token.expiresAt.getTime() - Date.now()) / 1000),
-      },
+    sendSuccess(res, {
+      token: token.token,
+      participantId: token.participantId,
+      userId: token.userId,
+      stageArn: token.stageArn,
+      capabilities: token.capabilities,
+      expiresAt: token.expiresAt,
+      whipEndpoint: API_ENDPOINTS.WHIP,
+      expiresIn: Math.floor((token.expiresAt.getTime() - Date.now()) / 1000),
       instructions: {
         obs: {
           service: 'WHIP',
@@ -91,11 +93,7 @@ router.post('/publisher', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('❌ 主播 Token 生成失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.TOKEN_GENERATION_FAILED,
-      message: 'Token 生成失敗',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendError(res, ERROR_CODES.TOKEN_GENERATION_FAILED, 'Token 生成失敗', HTTP_STATUS.INTERNAL_SERVER_ERROR, error.message);
   }
 });
 
@@ -110,10 +108,7 @@ router.post('/viewer', async (req: Request, res: Response) => {
     const { userId, stageArn } = req.body;
 
     if (!userId) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: '缺少 userId',
-      });
+      return sendValidationError(res, '缺少 userId', ['userId']);
     }
 
     logger.info('收到觀眾 Token 請求', { userId });
@@ -146,10 +141,7 @@ router.post('/viewer', async (req: Request, res: Response) => {
     }
 
     if (!targetStageArn) {
-      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        error: ERROR_CODES.INTERNAL_ERROR,
-        message: '未配置 Stage ARN',
-      });
+      return sendInternalError(res, null, '未配置 Stage ARN');
     }
 
     // 檢查主播是否在線
@@ -157,10 +149,7 @@ router.post('/viewer', async (req: Request, res: Response) => {
     const isPublisherLive = await redis.getPublisherStatus();
 
     if (!isPublisherLive) {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({
-        error: ERROR_CODES.NOT_FOUND,
-        message: '主播未開播',
-      });
+      return sendNotFound(res, '主播直播');
     }
 
     // 檢查 Stage 是否已滿
@@ -171,10 +160,12 @@ router.post('/viewer', async (req: Request, res: Response) => {
         viewerCount,
         userId,
       });
-      return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
-        error: ERROR_CODES.STAGE_FULL,
-        message: 'Stage 已滿，請稍後再試',
-      });
+      return sendError(
+        res,
+        ERROR_CODES.STAGE_FULL,
+        'Stage 已滿，請稍後再試',
+        HTTP_STATUS.SERVICE_UNAVAILABLE
+      );
     }
 
     // 生成 Token
@@ -188,18 +179,15 @@ router.post('/viewer', async (req: Request, res: Response) => {
     await heartbeat.recordViewerJoin(userId, targetStageArn, token.participantId);
 
     // 返回資訊
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        token: token.token,
-        participantId: token.participantId,
-        userId: token.userId,
-        stageArn: token.stageArn,
-        capabilities: token.capabilities,
-        expiresAt: token.expiresAt,
-        expiresIn: Math.floor((token.expiresAt.getTime() - Date.now()) / 1000),
-        currentViewers: viewerCount + 1,
-      },
+    sendSuccess(res, {
+      token: token.token,
+      participantId: token.participantId,
+      userId: token.userId,
+      stageArn: token.stageArn,
+      capabilities: token.capabilities,
+      expiresAt: token.expiresAt,
+      expiresIn: Math.floor((token.expiresAt.getTime() - Date.now()) / 1000),
+      currentViewers: viewerCount + 1,
     });
 
     logger.info('✅ 觀眾 Token 生成成功', {
@@ -210,11 +198,7 @@ router.post('/viewer', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('❌ 觀眾 Token 生成失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.TOKEN_GENERATION_FAILED,
-      message: 'Token 生成失敗',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendError(res, ERROR_CODES.TOKEN_GENERATION_FAILED, 'Token 生成失敗', HTTP_STATUS.INTERNAL_SERVER_ERROR, error.message);
   }
 });
 
@@ -228,33 +212,27 @@ router.post('/mediaserver', async (req: Request, res: Response) => {
     const { serverId, stageArn } = req.body;
 
     if (!serverId || !stageArn) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: '缺少 serverId 或 stageArn',
-      });
+      const missingFields = [];
+      if (!serverId) missingFields.push('serverId');
+      if (!stageArn) missingFields.push('stageArn');
+      return sendValidationError(res, '缺少必要參數', missingFields);
     }
 
     // 驗證是否為內部請求
     const internalSecret = req.headers['x-internal-secret'];
     if (internalSecret !== process.env.INTERNAL_SECRET) {
-      return res.status(HTTP_STATUS.FORBIDDEN).json({
-        error: ERROR_CODES.FORBIDDEN,
-        message: '無權訪問',
-      });
+      return sendForbidden(res);
     }
 
     // 生成 Token
     const token = await getIVSService().createMediaServerToken(serverId, stageArn);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        token: token.token,
-        participantId: token.participantId,
-        stageArn: token.stageArn,
-        capabilities: token.capabilities,
-        expiresAt: token.expiresAt,
-      },
+    sendSuccess(res, {
+      token: token.token,
+      participantId: token.participantId,
+      stageArn: token.stageArn,
+      capabilities: token.capabilities,
+      expiresAt: token.expiresAt,
     });
 
     logger.info('✅ Media Server Token 生成成功', {
@@ -263,10 +241,7 @@ router.post('/mediaserver', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('❌ Media Server Token 生成失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.TOKEN_GENERATION_FAILED,
-      message: 'Token 生成失敗',
-    });
+    sendError(res, ERROR_CODES.TOKEN_GENERATION_FAILED, 'Token 生成失敗', HTTP_STATUS.INTERNAL_SERVER_ERROR, error.message);
   }
 });
 

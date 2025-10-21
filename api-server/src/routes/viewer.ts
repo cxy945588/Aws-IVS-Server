@@ -7,6 +7,13 @@ import { ViewerHeartbeatService } from '../services/ViewerHeartbeatService';
 import { RedisService } from '../services/RedisService';
 import { logger } from '../utils/logger';
 import { HTTP_STATUS, ERROR_CODES } from '../utils/constants';
+import {
+  sendSuccess,
+  sendError,
+  sendValidationError,
+  sendNotFound,
+  sendInternalError,
+} from '../utils/responseHelper';
 
 const router = Router();
 
@@ -19,10 +26,11 @@ router.post('/rejoin', async (req: Request, res: Response) => {
     const { userId, stageArn, participantId } = req.body;
 
     if (!userId || !stageArn || !participantId) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: '缺少必要參數 (userId, stageArn, participantId)',
-      });
+      const missingFields = [];
+      if (!userId) missingFields.push('userId');
+      if (!stageArn) missingFields.push('stageArn');
+      if (!participantId) missingFields.push('participantId');
+      return sendValidationError(res, '缺少必要參數', missingFields);
     }
 
     const heartbeat = ViewerHeartbeatService.getInstance();
@@ -43,23 +51,15 @@ router.post('/rejoin', async (req: Request, res: Response) => {
       currentViewers: viewerCount,
     });
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: '重新加入成功',
-      data: {
-        userId,
-        stageArn,
-        participantId,
-        currentViewers: viewerCount,
-      },
-      timestamp: new Date().toISOString(),
-    });
+    sendSuccess(res, {
+      userId,
+      stageArn,
+      participantId,
+      currentViewers: viewerCount,
+    }, HTTP_STATUS.OK, '重新加入成功');
   } catch (error: any) {
     logger.error('觀眾重新加入失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '重新加入失敗',
-    });
+    sendInternalError(res, error, '重新加入失敗');
   }
 });
 
@@ -72,33 +72,27 @@ router.post('/heartbeat', async (req: Request, res: Response) => {
     const { userId, stageArn } = req.body;
 
     if (!userId || !stageArn) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: '缺少 userId 或 stageArn',
-      });
+      const missingFields = [];
+      if (!userId) missingFields.push('userId');
+      if (!stageArn) missingFields.push('stageArn');
+      return sendValidationError(res, '缺少必要參數', missingFields);
     }
 
     const heartbeat = ViewerHeartbeatService.getInstance();
     const success = await heartbeat.updateViewerHeartbeat(userId, stageArn);
 
     if (!success) {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({
-        error: ERROR_CODES.NOT_FOUND,
-        message: '觀眾 Session 不存在',
-      });
+      return sendNotFound(res, '觀眾 Session');
     }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: '心跳更新成功',
-      timestamp: new Date().toISOString(),
-    });
+    sendSuccess(res, {
+      userId,
+      stageArn,
+      heartbeatUpdated: true,
+    }, HTTP_STATUS.OK, '心跳更新成功');
   } catch (error: any) {
     logger.error('心跳更新失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '心跳更新失敗',
-    });
+    sendInternalError(res, error, '心跳更新失敗');
   }
 });
 
@@ -111,26 +105,23 @@ router.post('/leave', async (req: Request, res: Response) => {
     const { userId, stageArn } = req.body;
 
     if (!userId || !stageArn) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: '缺少 userId 或 stageArn',
-      });
+      const missingFields = [];
+      if (!userId) missingFields.push('userId');
+      if (!stageArn) missingFields.push('stageArn');
+      return sendValidationError(res, '缺少必要參數', missingFields);
     }
 
     const heartbeat = ViewerHeartbeatService.getInstance();
     await heartbeat.recordViewerLeave(userId, stageArn);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: '觀眾離開記錄成功',
-      timestamp: new Date().toISOString(),
-    });
+    sendSuccess(res, {
+      userId,
+      stageArn,
+      viewerLeft: true,
+    }, HTTP_STATUS.OK, '觀眾離開記錄成功');
   } catch (error: any) {
     logger.error('記錄觀眾離開失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '記錄離開失敗',
-    });
+    sendInternalError(res, error, '記錄離開失敗');
   }
 });
 
@@ -147,21 +138,15 @@ router.get('/list/:stageArn', async (req: Request, res: Response) => {
     const redis = RedisService.getInstance();
     const viewerCount = await redis.getStageViewerCount(stageArn);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        stageArn,
-        totalViewers: viewerCount,
-        activeViewers: viewers.length,
-        viewers: viewers,
-      },
+    sendSuccess(res, {
+      stageArn,
+      totalViewers: viewerCount,
+      activeViewers: viewers.length,
+      viewers: viewers,
     });
   } catch (error: any) {
     logger.error('獲取觀眾列表失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取觀眾列表失敗',
-    });
+    sendInternalError(res, error, '獲取觀眾列表失敗');
   }
 });
 
@@ -174,10 +159,10 @@ router.get('/duration', async (req: Request, res: Response) => {
     const { userId, stageArn } = req.query;
 
     if (!userId || !stageArn) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: '缺少 userId 或 stageArn',
-      });
+      const missingFields = [];
+      if (!userId) missingFields.push('userId');
+      if (!stageArn) missingFields.push('stageArn');
+      return sendValidationError(res, '缺少必要參數', missingFields);
     }
 
     const heartbeat = ViewerHeartbeatService.getInstance();
@@ -186,21 +171,15 @@ router.get('/duration', async (req: Request, res: Response) => {
       stageArn as string
     );
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        userId,
-        stageArn,
-        watchDuration: duration,
-        watchDurationFormatted: `${Math.floor(duration / 60)}分 ${duration % 60}秒`,
-      },
+    sendSuccess(res, {
+      userId,
+      stageArn,
+      watchDurationSeconds: duration,
+      watchDurationFormatted: `${Math.floor(duration / 60)}分 ${duration % 60}秒`,
     });
   } catch (error: any) {
     logger.error('獲取觀看時長失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取觀看時長失敗',
-    });
+    sendInternalError(res, error, '獲取觀看時長失敗');
   }
 });
 
