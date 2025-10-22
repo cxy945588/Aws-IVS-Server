@@ -139,8 +139,12 @@ async function testServerHealth(): Promise<TestResult> {
 
     const data = await response.json();
 
-    if (data.status !== 'ok') {
-      throw new Error(`服务器状态异常: ${data.status}`);
+    if (data.status !== 'success') {
+      throw new Error(`API 响应状态异常: ${data.status}`);
+    }
+
+    if (!data.data || data.data.status !== 'healthy') {
+      throw new Error(`服务器健康状态异常: ${data.data?.status || 'unknown'}`);
     }
 
     console.log('✓', name);
