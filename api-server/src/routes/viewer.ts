@@ -5,6 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { ViewerHeartbeatService } from '../services/ViewerHeartbeatService';
 import { RedisService } from '../services/RedisService';
+import { ViewerRecordService } from '../services/ViewerRecordService';
 import { logger } from '../utils/logger';
 import { HTTP_STATUS, ERROR_CODES } from '../utils/constants';
 import {
@@ -35,14 +36,25 @@ router.post('/rejoin', async (req: Request, res: Response) => {
 
     const heartbeat = ViewerHeartbeatService.getInstance();
     const redis = RedisService.getInstance();
+    const viewerRecord = ViewerRecordService.getInstance();
 
-    // 重新記錄觀眾加入
+    // 1. 更新 Redis（即時數據）
     await heartbeat.recordViewerJoin(userId, stageArn, participantId);
-
-    // 增加觀眾計數
     await redis.incrementViewerCount(stageArn);
 
     const viewerCount = await redis.getStageViewerCount(stageArn);
+
+    // 2. 寫入資料庫（持久化）- 異步執行，不阻塞響應
+    viewerRecord.recordJoin({
+      userId,
+      stageArn,
+      participantId,
+      joinedAt: new Date(),
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    }).catch(err => {
+      logger.error('寫入觀看記錄失敗', { error: err.message, userId });
+    });
 
     logger.info('🔄 觀眾重新加入', {
       userId,
@@ -51,6 +63,7 @@ router.post('/rejoin', async (req: Request, res: Response) => {
       currentViewers: viewerCount,
     });
 
+    // 3. 立即返回響應
     sendSuccess(res, {
       userId,
       stageArn,
@@ -112,8 +125,17 @@ router.post('/leave', async (req: Request, res: Response) => {
     }
 
     const heartbeat = ViewerHeartbeatService.getInstance();
+    const viewerRecord = ViewerRecordService.getInstance();
+
+    // 1. 更新 Redis（即時數據）
     await heartbeat.recordViewerLeave(userId, stageArn);
 
+    // 2. 更新資料庫（持久化）- 異步執行，不阻塞響應
+    viewerRecord.recordLeave(userId, stageArn).catch(err => {
+      logger.error('更新觀看記錄失敗', { error: err.message, userId });
+    });
+
+    // 3. 立即返回響應
     sendSuccess(res, {
       userId,
       stageArn,
@@ -152,7 +174,7 @@ router.get('/list/:stageArn', async (req: Request, res: Response) => {
 
 /**
  * GET /api/viewer/duration
- * 獲取觀眾觀看時長
+ * 獲取觀眾觀看時長（從 Redis）
  */
 router.get('/duration', async (req: Request, res: Response) => {
   try {
@@ -180,6 +202,60 @@ router.get('/duration', async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('獲取觀看時長失敗', { error: error.message });
     sendInternalError(res, error, '獲取觀看時長失敗');
+  }
+});
+
+/**
+ * GET /api/viewer/history/:userId
+ * 獲取觀眾的觀看歷史（從資料庫）
+ */
+router.get('/history/:userId', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+    const viewerRecord = ViewerRecordService.getInstance();
+    const history = await viewerRecord.getViewerHistory(userId, limit);
+
+    sendSuccess(res, {
+      userId,
+      totalRecords: history.length,
+      history,
+    });
+  } catch (error: any) {
+    logger.error('獲取觀看歷史失敗', { error: error.message });
+    sendInternalError(res, error, '獲取觀看歷史失敗');
+  }
+});
+
+/**
+ * GET /api/viewer/stats/:stageArn
+ * 獲取 Stage 的統計數據（從資料庫）
+ */
+router.get('/stats/:stageArn', async (req: Request, res: Response) => {
+  try {
+    const { stageArn } = req.params;
+    const days = parseInt(req.query.days as string) || 7;
+
+    const viewerRecord = ViewerRecordService.getInstance();
+    const stats = await viewerRecord.getStageStats(stageArn, days);
+
+    if (!stats) {
+      return sendSuccess(res, {
+        stageArn,
+        days,
+        message: '暫無統計數據',
+      });
+    }
+
+    sendSuccess(res, {
+      stageArn,
+      days,
+      stats,
+    });
+  } catch (error: any) {
+    logger.error('獲取統計數據失敗', { error: error.message });
+    sendInternalError(res, error, '獲取統計數據失敗');
   }
 });
 
