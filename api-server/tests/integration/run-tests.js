@@ -274,6 +274,12 @@ async function main() {
     console.log('\n=== 3. 压力测试 (已跳过) ===\n');
   }
 
+  // ========== 等待 Rate Limit 窗口重置 ==========
+  if (!SKIP_STRESS_TESTS) {
+    console.log('⏳ 等待 Rate Limit 窗口重置... (3 秒)\n');
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+
   // ========== 自动扩展测试 ==========
   if (!SKIP_STRESS_TESTS) {
     console.log('\n=== 4. Stage 自动扩展测试 ===\n');
@@ -284,12 +290,24 @@ async function main() {
       const SCALE_UP_THRESHOLD = 45;
       const HEALTH_CHECK_INTERVAL = 30000; // 30 秒
 
-      // 1. 获取初始 Stage 数量
+      // 1. 获取初始 Stage 数量（带重试逻辑处理 Rate Limit）
       console.log('  📊 获取初始 Stage 数量...');
-      const initialResponse = await fetch(`${BASE_URL}/api/stage/list`);
-      if (!initialResponse.ok) throw new Error('获取 Stage 列表失败');
-      const initialData = await initialResponse.json();
-      const initialStageCount = initialData.data.stages?.length || 0;
+      let initialStageCount = 0;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const initialResponse = await fetch(`${BASE_URL}/api/stage/list`);
+        if (initialResponse.status === 429) {
+          if (attempt < 3) {
+            console.log(`    ⚠️ 遇到 Rate Limit，2 秒后重试 (${attempt}/3)...`);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          throw new Error('获取 Stage 列表失败: Rate Limit');
+        }
+        if (!initialResponse.ok) throw new Error(`获取 Stage 列表失败: HTTP ${initialResponse.status}`);
+        const initialData = await initialResponse.json();
+        initialStageCount = initialData.data.stages?.length || 0;
+        break;
+      }
       console.log(`    初始 Stage 数量: ${initialStageCount}`);
 
       // 2. 模拟 50 个观众加入（添加延迟避免触发 Rate Limit）
@@ -340,11 +358,24 @@ async function main() {
       console.log(`    扩展阈值: ${SCALE_UP_THRESHOLD} 人`);
       await new Promise((resolve) => setTimeout(resolve, HEALTH_CHECK_INTERVAL + 5000));
 
-      // 5. 验证是否创建了新 Stage
+      // 5. 验证是否创建了新 Stage（带重试逻辑）
       console.log('  ✅ 验证是否创建了新 Stage...');
-      const finalResponse = await fetch(`${BASE_URL}/api/stage/list`);
-      const finalData = await finalResponse.json();
-      const finalStageCount = finalData.data.stages?.length || 0;
+      let finalStageCount = 0;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const finalResponse = await fetch(`${BASE_URL}/api/stage/list`);
+        if (finalResponse.status === 429) {
+          if (attempt < 3) {
+            console.log(`    ⚠️ 遇到 Rate Limit，2 秒后重试 (${attempt}/3)...`);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+          throw new Error('获取 Stage 列表失败: Rate Limit');
+        }
+        if (!finalResponse.ok) throw new Error(`获取 Stage 列表失败: HTTP ${finalResponse.status}`);
+        const finalData = await finalResponse.json();
+        finalStageCount = finalData.data.stages?.length || 0;
+        break;
+      }
       console.log(`    最终 Stage 数量: ${finalStageCount}`);
 
       // 清理：让所有观众离开

@@ -56,6 +56,12 @@ async function main() {
     const stressResults = await runStressTests();
     if (stressResults.length > 0) {
       allSuites.push(createSuite('压力测试', stressResults));
+
+      // 等待 Rate Limit 窗口部分重置
+      if (!TEST_CONFIG.options.skipStressTests) {
+        console.log('⏳ 等待 Rate Limit 窗口重置... (3 秒)\n');
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
     }
 
     // 5. 自动扩展测试（可选）

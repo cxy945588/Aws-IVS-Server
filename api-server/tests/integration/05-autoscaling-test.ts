@@ -233,22 +233,48 @@ async function testAutoScaleDown(): Promise<TestResult> {
 }
 
 /**
- * 获取 Stage 列表
+ * 获取 Stage 列表（带重试逻辑，处理 Rate Limit）
  */
 async function getStageList(): Promise<any[]> {
-  const response = await fetch(`${BASE_URL}/api/stage/list`);
+  const maxRetries = 3;
+  const retryDelay = 2000; // 2 秒
 
-  if (!response.ok) {
-    throw new Error(`获取 Stage 列表失败: HTTP ${response.status}`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(`${BASE_URL}/api/stage/list`);
+
+      // 如果是 Rate Limit 错误，等待后重试
+      if (response.status === 429) {
+        if (attempt < maxRetries) {
+          console.log(`    ⚠️ 遇到 Rate Limit，${retryDelay / 1000} 秒后重试 (${attempt}/${maxRetries})...`);
+          await sleep(retryDelay);
+          continue;
+        }
+        throw new Error(`获取 Stage 列表失败: Rate Limit (已重试 ${maxRetries} 次)`);
+      }
+
+      if (!response.ok) {
+        throw new Error(`获取 Stage 列表失败: HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success !== true) {
+        throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
+      }
+
+      return data.data.stages || [];
+    } catch (error: any) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      // 其他错误也重试一次
+      console.log(`    ⚠️ 请求失败，${retryDelay / 1000} 秒后重试: ${error.message}`);
+      await sleep(retryDelay);
+    }
   }
 
-  const data = await response.json();
-
-  if (data.success !== true) {
-    throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
-  }
-
-  return data.data.stages || [];
+  throw new Error('获取 Stage 列表失败: 超过最大重试次数');
 }
 
 /**
