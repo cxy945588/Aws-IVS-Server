@@ -9,6 +9,7 @@ import { runEnvironmentTests } from './01-environment-test';
 import { runRedisTests } from './02-redis-test';
 import { runApiTests } from './03-api-test';
 import { runStressTests } from './04-stress-test';
+import { runAutoScalingTests } from './05-autoscaling-test';
 import { TEST_CONFIG, TestResult, TestSuite } from './test-config';
 
 // 加载环境变量
@@ -55,6 +56,12 @@ async function main() {
     const stressResults = await runStressTests();
     if (stressResults.length > 0) {
       allSuites.push(createSuite('压力测试', stressResults));
+    }
+
+    // 5. 自动扩展测试（可选）
+    const autoScalingResults = await runAutoScalingTests();
+    if (autoScalingResults.length > 0) {
+      allSuites.push(createSuite('Stage 自动扩展测试', autoScalingResults));
     }
 
     // 打印总结

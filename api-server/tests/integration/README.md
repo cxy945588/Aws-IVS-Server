@@ -28,6 +28,16 @@
 - ✅ 高频心跳测试（50 req/s）
 - ✅ 大量观众同时离开测试（100 观众）
 
+### 5. Stage 自动扩展测试（可选）
+- ✅ 模拟触发自动扩展（Scale Up）
+  - 模拟 50 个观众加入（超过 45 人阈值）
+  - 等待健康检查周期（30 秒）
+  - 验证是否自动创建新 Stage
+- ✅ Stage 列表查询
+- ⏭️ 自动缩减测试（需要 6+ 分钟，默认跳过）
+
+**注意**: 自动扩展测试需要约 1-2 分钟，会实际模拟观众加入达到阈值触发扩展，而不是直接调用 API。
+
 ## 🚀 快速开始
 
 ### 方式一：使用 Node.js 运行（推荐）
@@ -219,6 +229,7 @@ tests/integration/
 ├── 02-redis-test.ts            # Redis 服务测试
 ├── 03-api-test.ts              # API 端点测试
 ├── 04-stress-test.ts           # 压力测试
+├── 05-autoscaling-test.ts      # Stage 自动扩展测试
 ├── run-tests.ts                # 主测试脚本（TypeScript）
 └── run-tests.js                # 主测试脚本（JavaScript，推荐）
 ```

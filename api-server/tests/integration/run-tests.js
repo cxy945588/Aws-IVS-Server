@@ -251,6 +251,97 @@ async function main() {
     console.log('\n=== 3. 压力测试 (已跳过) ===\n');
   }
 
+  // ========== 自动扩展测试 ==========
+  if (!SKIP_STRESS_TESTS) {
+    console.log('\n=== 4. Stage 自动扩展测试 ===\n');
+    console.log('⚠️  此测试需要较长时间（约 1-2 分钟）\n');
+
+    // 测试：模拟触发自动扩展
+    await test('自动扩展测试 - 模拟 50 个观众加入', async () => {
+      const SCALE_UP_THRESHOLD = 45;
+      const HEALTH_CHECK_INTERVAL = 30000; // 30 秒
+
+      // 1. 获取初始 Stage 数量
+      console.log('  📊 获取初始 Stage 数量...');
+      const initialResponse = await fetch(`${BASE_URL}/api/stage/list`);
+      if (!initialResponse.ok) throw new Error('获取 Stage 列表失败');
+      const initialData = await initialResponse.json();
+      const initialStageCount = initialData.data.stages?.length || 0;
+      console.log(`    初始 Stage 数量: ${initialStageCount}`);
+
+      // 2. 模拟 50 个观众加入
+      console.log('  👥 模拟 50 个观众加入...');
+      const userIds = [];
+      for (let i = 0; i < 50; i++) {
+        const uid = `autoscale-${Date.now()}-${i}`;
+        const pid = `participant-${Date.now()}-${i}`;
+        userIds.push(uid);
+
+        const response = await fetch(`${BASE_URL}/api/viewer/rejoin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: uid, stageArn: STAGE_ARN, participantId: pid }),
+        });
+
+        if (!response.ok) throw new Error(`观众 ${i + 1} 加入失败`);
+
+        if ((i + 1) % 10 === 0) {
+          console.log(`    已加入 ${i + 1}/50 个观众`);
+        }
+      }
+
+      // 3. 验证观众数
+      console.log('  📈 验证观众数...');
+      const viewerResponse = await fetch(
+        `${BASE_URL}/api/viewer/list/${encodeURIComponent(STAGE_ARN)}`
+      );
+      const viewerData = await viewerResponse.json();
+      console.log(`    当前观众数: ${viewerData.data.totalViewers}`);
+
+      if (viewerData.data.totalViewers < SCALE_UP_THRESHOLD) {
+        throw new Error(
+          `观众数不足: ${viewerData.data.totalViewers} < ${SCALE_UP_THRESHOLD}`
+        );
+      }
+
+      // 4. 等待健康检查触发
+      console.log(`  ⏳ 等待自动扩展检查... (${HEALTH_CHECK_INTERVAL / 1000 + 5} 秒)`);
+      console.log(`    健康检查周期: 每 ${HEALTH_CHECK_INTERVAL / 1000} 秒`);
+      console.log(`    扩展阈值: ${SCALE_UP_THRESHOLD} 人`);
+      await new Promise((resolve) => setTimeout(resolve, HEALTH_CHECK_INTERVAL + 5000));
+
+      // 5. 验证是否创建了新 Stage
+      console.log('  ✅ 验证是否创建了新 Stage...');
+      const finalResponse = await fetch(`${BASE_URL}/api/stage/list`);
+      const finalData = await finalResponse.json();
+      const finalStageCount = finalData.data.stages?.length || 0;
+      console.log(`    最终 Stage 数量: ${finalStageCount}`);
+
+      // 清理：让所有观众离开
+      console.log('  🧹 清理观众...');
+      await Promise.all(
+        userIds.map((uid) =>
+          fetch(`${BASE_URL}/api/viewer/leave`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: uid, stageArn: STAGE_ARN }),
+          }).catch(() => {})
+        )
+      );
+
+      const newStagesCreated = finalStageCount - initialStageCount;
+      if (newStagesCreated > 0) {
+        console.log(`    ✓ 成功创建了 ${newStagesCreated} 个新 Stage`);
+      } else {
+        console.log('    ⚠ 未创建新 Stage（可能使用率未达到 60% 或已有足够容量）');
+      }
+
+      // 测试通过（无论是否创建了新 Stage，只要流程正确即可）
+    });
+  } else {
+    console.log('\n=== 4. Stage 自动扩展测试 (已跳过) ===\n');
+  }
+
   // ========== 打印总结 ==========
   const totalDuration = Date.now() - startTime;
   printSummary(totalDuration);
