@@ -36,22 +36,45 @@ async function testConcurrentViewerJoin(): Promise<TestResult> {
 
   try {
     const userIds: string[] = [];
+    const responses: Response[] = [];
 
-    // 创建并发请求
-    const promises = Array.from({ length: TEST_CONFIG.stress.concurrentViewers }, (_, i) => {
-      const userId = `stress-user-${Date.now()}-${i}`;
-      const participantId = `stress-participant-${Date.now()}-${i}`;
-      userIds.push(userId);
+    // 分批发送以避免触发 Rate Limit (100 req/min)
+    // 使用批次大小 20，每批延迟 200ms
+    const BATCH_SIZE = 20;
+    const BATCH_DELAY = 200; // ms
 
-      return fetch(`${BASE_URL}/api/viewer/rejoin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, stageArn, participantId }),
-      });
-    });
+    const totalViewers = TEST_CONFIG.stress.concurrentViewers;
+    const numBatches = Math.ceil(totalViewers / BATCH_SIZE);
 
-    // 等待所有请求完成
-    const responses = await Promise.all(promises);
+    for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
+      const batchStart = batchIndex * BATCH_SIZE;
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, totalViewers);
+
+      // 创建当前批次的并发请求
+      const batchPromises = [];
+      for (let i = batchStart; i < batchEnd; i++) {
+        const userId = `stress-user-${Date.now()}-${i}`;
+        const participantId = `stress-participant-${Date.now()}-${i}`;
+        userIds.push(userId);
+
+        batchPromises.push(
+          fetch(`${BASE_URL}/api/viewer/rejoin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, stageArn, participantId }),
+          })
+        );
+      }
+
+      // 等待当前批次完成
+      const batchResponses = await Promise.all(batchPromises);
+      responses.push(...batchResponses);
+
+      // 批次之间添加延迟（除了最后一批）
+      if (batchIndex < numBatches - 1) {
+        await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY));
+      }
+    }
 
     // 检查成功率
     const successCount = responses.filter((r) => r.ok).length;

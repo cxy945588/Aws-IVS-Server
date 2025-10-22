@@ -56,8 +56,11 @@ async function testAutoScaleUp(): Promise<TestResult> {
     console.log(`    初始 Stage 数量: ${initialStageCount}`);
 
     // 2. 模拟 50 个观众加入（超过阈值 45）
+    // 添加批次延迟避免触发 Rate Limit (100 req/min)
     console.log(`  👥 步骤 2/5: 模拟 ${SCALE_UP_THRESHOLD + 5} 个观众加入...`);
     const viewersToAdd = SCALE_UP_THRESHOLD + 5; // 50 个观众
+    const BATCH_SIZE = 10; // 每批 10 个
+    const BATCH_DELAY = 100; // 每批延迟 100ms
 
     for (let i = 0; i < viewersToAdd; i++) {
       const userId = `auto-scale-test-${Date.now()}-${i}`;
@@ -78,9 +81,12 @@ async function testAutoScaleUp(): Promise<TestResult> {
         throw new Error(`观众 ${i + 1} 加入失败: HTTP ${response.status}`);
       }
 
-      // 每 10 个观众打印一次进度
-      if ((i + 1) % 10 === 0) {
+      // 每 10 个观众打印一次进度，并添加延迟避免 Rate Limit
+      if ((i + 1) % BATCH_SIZE === 0) {
         console.log(`    已加入 ${i + 1}/${viewersToAdd} 个观众`);
+        if (i + 1 < viewersToAdd) {
+          await sleep(BATCH_DELAY);
+        }
       }
     }
 

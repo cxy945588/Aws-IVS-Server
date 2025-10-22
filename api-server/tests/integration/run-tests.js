@@ -213,22 +213,45 @@ async function main() {
   if (!SKIP_STRESS_TESTS) {
     console.log('\n=== 3. 压力测试 ===\n');
 
-    // 测试：并发观众加入
+    // 测试：并发观众加入（分批避免 Rate Limit）
     await test('并发观众加入测试 (50 观众)', async () => {
       const userIds = [];
-      const promises = Array.from({ length: 50 }, (_, i) => {
-        const uid = `stress-user-${Date.now()}-${i}`;
-        const pid = `stress-participant-${Date.now()}-${i}`;
-        userIds.push(uid);
+      const responses = [];
+      const BATCH_SIZE = 20;
+      const BATCH_DELAY = 200; // ms
+      const totalViewers = 50;
+      const numBatches = Math.ceil(totalViewers / BATCH_SIZE);
 
-        return fetch(`${BASE_URL}/api/viewer/rejoin`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: uid, stageArn: STAGE_ARN, participantId: pid }),
-        });
-      });
+      for (let batchIndex = 0; batchIndex < numBatches; batchIndex++) {
+        const batchStart = batchIndex * BATCH_SIZE;
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, totalViewers);
 
-      const responses = await Promise.all(promises);
+        // 创建当前批次的并发请求
+        const batchPromises = [];
+        for (let i = batchStart; i < batchEnd; i++) {
+          const uid = `stress-user-${Date.now()}-${i}`;
+          const pid = `stress-participant-${Date.now()}-${i}`;
+          userIds.push(uid);
+
+          batchPromises.push(
+            fetch(`${BASE_URL}/api/viewer/rejoin`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: uid, stageArn: STAGE_ARN, participantId: pid }),
+            })
+          );
+        }
+
+        // 等待当前批次完成
+        const batchResponses = await Promise.all(batchPromises);
+        responses.push(...batchResponses);
+
+        // 批次之间添加延迟（除了最后一批）
+        if (batchIndex < numBatches - 1) {
+          await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY));
+        }
+      }
+
       const successCount = responses.filter((r) => r.ok).length;
       const successRate = (successCount / responses.length) * 100;
 
@@ -269,9 +292,12 @@ async function main() {
       const initialStageCount = initialData.data.stages?.length || 0;
       console.log(`    初始 Stage 数量: ${initialStageCount}`);
 
-      // 2. 模拟 50 个观众加入
+      // 2. 模拟 50 个观众加入（添加延迟避免触发 Rate Limit）
       console.log('  👥 模拟 50 个观众加入...');
       const userIds = [];
+      const BATCH_SIZE = 10; // 每批 10 个
+      const BATCH_DELAY = 100; // 每批延迟 100ms
+
       for (let i = 0; i < 50; i++) {
         const uid = `autoscale-${Date.now()}-${i}`;
         const pid = `participant-${Date.now()}-${i}`;
@@ -283,10 +309,14 @@ async function main() {
           body: JSON.stringify({ userId: uid, stageArn: STAGE_ARN, participantId: pid }),
         });
 
-        if (!response.ok) throw new Error(`观众 ${i + 1} 加入失败`);
+        if (!response.ok) throw new Error(`观众 ${i + 1} 加入失败: HTTP ${response.status}`);
 
-        if ((i + 1) % 10 === 0) {
+        // 每 10 个观众打印一次进度，并添加延迟避免 Rate Limit
+        if ((i + 1) % BATCH_SIZE === 0) {
           console.log(`    已加入 ${i + 1}/50 个观众`);
+          if (i + 1 < 50) {
+            await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY));
+          }
         }
       }
 
