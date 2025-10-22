@@ -26,11 +26,9 @@
   "license": "MIT",
   "dependencies": {
     "@aws-sdk/client-cloudwatch": "^3.500.0",
-    "@aws-sdk/client-dynamodb": "^3.500.0",
     "@aws-sdk/client-ivs": "^3.500.0",
     "@aws-sdk/client-ivs-realtime": "^3.500.0",
     "@aws-sdk/client-sns": "^3.500.0",
-    "@aws-sdk/lib-dynamodb": "^3.500.0",
     "@types/pg": "^8.15.5",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
