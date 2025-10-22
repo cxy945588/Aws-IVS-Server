@@ -152,7 +152,7 @@ export class ViewerRecordService {
         [userId, limit]
       );
 
-      return result.rows.map(row => ({
+      return result.rows.map((row: any) => ({
         id: row.id,
         userId: row.user_id,
         stageArn: row.stage_arn,
@@ -243,7 +243,7 @@ export class ViewerRecordService {
       const params = stageArn ? [stageArn] : [];
       const result = await this.db.query(query, params);
 
-      return result.rows.map(row => ({
+      return result.rows.map((row: any) => ({
         userId: row.user_id,
         stageArn: row.stage_arn,
         participantId: row.participant_id,
