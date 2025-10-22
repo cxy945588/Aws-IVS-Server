@@ -11,15 +11,25 @@
 | 文檔 | 描述 | 適合對象 |
 |------|------|---------|
 | **[README.md](../README.md)** | 專案介紹、安裝和快速開始 | 所有用戶 |
+| **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** | PostgreSQL 部署完整指南 🆕 | 運維、開發者 |
 | **[API.md](API.md)** | 完整的 API 文檔（YApi 格式） | 開發者 |
 | **[DATA_FLOW.md](DATA_FLOW.md)** | 系統數據流程圖 | 開發者、架構師 |
 
-### 📖 參考文檔
+### 📖 架構與優化 🆕
+
+| 文檔 | 描述 | 適合對象 |
+|------|------|---------|
+| **[SIMPLE_ARCHITECTURE.md](SIMPLE_ARCHITECTURE.md)** | 單 Server + PostgreSQL 架構方案 | 架構師、技術主管 |
+| **[COST_OPTIMIZATION.md](COST_OPTIMIZATION.md)** | 成本優化分析（節省 94%） | 技術主管、決策者 |
+| **[OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md)** | 生產環境優化指南 | 運維、開發者 |
+| **[QUICK_START_OPTIMIZATION.md](QUICK_START_OPTIMIZATION.md)** | Week 1 快速優化 | 開發者 |
+
+### 📚 參考文檔
 
 | 文檔 | 描述 |
 |------|------|
-| **[CHANGELOG.md](../CHANGELOG.md)** | 版本更新記錄 |
-| **[API_FIXES_2025-10-21.md](../API_FIXES_2025-10-21.md)** | 最新 API 修復記錄 |
+| **[CHANGELOG.md](../CHANGELOG.md)** | 版本更新記錄（v1.2.0） |
+| **[API_FIXES_2025-10-21.md](../API_FIXES_2025-10-21.md)** | API 修復記錄 |
 | **[archive/](archive/)** | 歷史文檔存檔 |
 
 ---
@@ -172,6 +182,8 @@ docs/
 - `POST /api/viewer/heartbeat` - [發送心跳](API.md#41-發送觀眾心跳)
 - `POST /api/viewer/leave` - [觀眾離開](API.md#42-觀眾離開)
 - `GET /api/viewer/list/:stageArn` - [獲取觀眾列表](API.md#43-獲取觀眾列表)
+- **`GET /api/viewer/history/:userId`** - [獲取觀看歷史](API.md) 🆕
+- **`GET /api/viewer/stats/:stageArn`** - [獲取 Stage 統計](API.md) 🆕
 
 ### 統計數據
 - `GET /api/stats` - [獲取總體統計](API.md#51-獲取總體統計)
@@ -179,7 +191,7 @@ docs/
 - `GET /api/stats/publisher` - [獲取主播狀態](API.md#53-獲取主播狀態)
 
 ### 健康檢查
-- `GET /health` - [服務健康檢查](API.md#11-服務健康檢查)
+- `GET /api/health` - [服務健康檢查](API.md#11-服務健康檢查)
 
 ---
 
@@ -227,6 +239,9 @@ docs/
 
 | 日期 | 版本 | 更新內容 |
 |------|------|---------|
+| 2025-10-22 | v3.0 | PostgreSQL 整合文檔（4 份新文檔） 🆕 |
+| 2025-10-22 | v3.0 | 更新 README, CHANGELOG, docs/README.md 🆕 |
+| 2025-10-22 | v3.0 | 新增 2 個 API 端點文檔 🆕 |
 | 2025-10-21 | v2.0 | 創建 YApi 格式完整 API 文檔 |
 | 2025-10-21 | v2.0 | 整理歷史文檔到 archive |
 | 2025-10-21 | v2.0 | 創建 CHANGELOG.md |
@@ -234,8 +249,8 @@ docs/
 
 ---
 
-**最後更新**: 2025-10-21
-**文檔版本**: 2.0
-**API 版本**: v1.1.0
+**最後更新**: 2025-10-22
+**文檔版本**: 3.0
+**API 版本**: v1.2.0
 
 **⭐ 如果文檔對您有幫助，請給專案一個 Star！**
