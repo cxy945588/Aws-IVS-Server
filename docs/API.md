@@ -1,8 +1,8 @@
 # AWS IVS Real-time API 完整文檔
 
-> 📌 **最後更新**: 2025-10-21
-> 📌 **API 版本**: v1.1.0
-> 📌 **文檔版本**: 2.0
+> 📌 **最後更新**: 2025-10-22
+> 📌 **API 版本**: v1.2.0
+> 📌 **文檔版本**: 3.0
 
 ---
 
@@ -724,7 +724,52 @@ curl -X DELETE "http://localhost:3000/api/stage/arn:aws:ivs:ap-northeast-1:12345
 
 ## 4. 觀眾管理
 
-### 4.1 發送觀眾心跳
+### 4.1 觀眾重新加入
+
+**接口地址**: `POST /api/viewer/rejoin`
+**認證**: 需要 API Key
+**描述**: 觀眾重新加入直播（Token 還有效的情況下）
+
+#### 請求參數
+
+| 參數名 | 類型 | 必填 | 說明 |
+|--------|------|------|------|
+| userId | string | ✅ | 觀眾唯一識別碼 |
+| stageArn | string | ✅ | Stage ARN |
+| participantId | string | ✅ | 參與者 ID |
+
+#### 請求示例
+
+```bash
+curl -X POST http://localhost:3000/api/viewer/rejoin \
+  -H "x-api-key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "viewer-456",
+    "stageArn": "arn:aws:ivs:ap-northeast-1:123456789012:stage/aBcDeFgHiJkL",
+    "participantId": "participant-xyz789"
+  }'
+```
+
+#### 成功返回示例
+
+```json
+{
+  "success": true,
+  "data": {
+    "userId": "viewer-456",
+    "stageArn": "arn:aws:ivs:ap-northeast-1:123456789012:stage/aBcDeFgHiJkL",
+    "participantId": "participant-xyz789",
+    "currentViewers": 45
+  },
+  "timestamp": "2025-10-22T10:30:00.000Z",
+  "message": "重新加入成功"
+}
+```
+
+---
+
+### 4.2 發送觀眾心跳
 
 **接口地址**: `POST /api/viewer/heartbeat`
 **認證**: 需要 API Key
@@ -766,7 +811,7 @@ curl -X POST http://localhost:3000/api/viewer/heartbeat \
 
 ---
 
-### 4.2 觀眾離開
+### 4.3 觀眾離開
 
 **接口地址**: `POST /api/viewer/leave`
 **認證**: 需要 API Key
@@ -808,7 +853,7 @@ curl -X POST http://localhost:3000/api/viewer/leave \
 
 ---
 
-### 4.3 獲取觀眾列表
+### 4.4 獲取觀眾列表
 
 **接口地址**: `GET /api/viewer/list/:stageArn`
 **認證**: 需要 API Key
@@ -857,7 +902,7 @@ curl -X GET "http://localhost:3000/api/viewer/list/arn:aws:ivs:ap-northeast-1:12
 
 ---
 
-### 4.4 獲取觀看時長
+### 4.5 獲取觀看時長
 
 **接口地址**: `GET /api/viewer/duration`
 **認證**: 需要 API Key
@@ -889,6 +934,117 @@ curl -X GET "http://localhost:3000/api/viewer/duration?userId=viewer-456&stageAr
     "watchDurationFormatted": "30分 45秒"
   },
   "timestamp": "2025-10-21T10:30:00.000Z"
+}
+```
+
+---
+
+### 4.6 獲取觀看歷史
+
+**接口地址**: `GET /api/viewer/history/:userId`
+**認證**: 需要 API Key
+**描述**: 獲取指定觀眾的觀看歷史記錄（從資料庫）
+
+#### 路徑參數
+
+| 參數名 | 類型 | 必填 | 說明 |
+|--------|------|------|------|
+| userId | string | ✅ | 觀眾唯一識別碼 |
+
+#### 查詢參數
+
+| 參數名 | 類型 | 必填 | 說明 |
+|--------|------|------|------|
+| limit | number | ❌ | 返回記錄數量限制（預設 10） |
+
+#### 請求示例
+
+```bash
+curl -X GET "http://localhost:3000/api/viewer/history/viewer-456?limit=10" \
+  -H "x-api-key: your-api-key"
+```
+
+#### 成功返回示例
+
+```json
+{
+  "success": true,
+  "data": {
+    "userId": "viewer-456",
+    "totalRecords": 3,
+    "history": [
+      {
+        "id": 123,
+        "userId": "viewer-456",
+        "stageArn": "arn:aws:ivs:ap-northeast-1:123456789012:stage/aBcDeFgHiJkL",
+        "participantId": "participant-xyz789",
+        "joinedAt": "2025-10-22T09:00:00.000Z",
+        "leftAt": "2025-10-22T10:30:00.000Z",
+        "watchDurationSeconds": 5400,
+        "userAgent": "Mozilla/5.0...",
+        "ipAddress": "192.168.1.1"
+      },
+      {
+        "id": 122,
+        "userId": "viewer-456",
+        "stageArn": "arn:aws:ivs:ap-northeast-1:123456789012:stage/XyZaBcDeFgHi",
+        "participantId": "participant-abc123",
+        "joinedAt": "2025-10-21T14:00:00.000Z",
+        "leftAt": "2025-10-21T15:20:00.000Z",
+        "watchDurationSeconds": 4800,
+        "userAgent": "Mozilla/5.0...",
+        "ipAddress": "192.168.1.1"
+      }
+    ]
+  },
+  "timestamp": "2025-10-22T10:30:00.000Z"
+}
+```
+
+---
+
+### 4.7 獲取 Stage 統計
+
+**接口地址**: `GET /api/viewer/stats/:stageArn`
+**認證**: 需要 API Key
+**描述**: 獲取指定 Stage 的統計數據（從資料庫）
+
+#### 路徑參數
+
+| 參數名 | 類型 | 必填 | 說明 |
+|--------|------|------|------|
+| stageArn | string | ✅ | Stage ARN（需 URL 編碼） |
+
+#### 查詢參數
+
+| 參數名 | 類型 | 必填 | 說明 |
+|--------|------|------|------|
+| days | number | ❌ | 統計天數（預設 7 天） |
+
+#### 請求示例
+
+```bash
+curl -X GET "http://localhost:3000/api/viewer/stats/arn:aws:ivs:ap-northeast-1:123456789012:stage:aBcDeFgHiJkL?days=7" \
+  -H "x-api-key: your-api-key"
+```
+
+#### 成功返回示例
+
+```json
+{
+  "success": true,
+  "data": {
+    "stageArn": "arn:aws:ivs:ap-northeast-1:123456789012:stage/aBcDeFgHiJkL",
+    "days": 7,
+    "stats": {
+      "totalViews": 1250,
+      "uniqueViewers": 823,
+      "avgWatchDuration": 3600,
+      "maxWatchDuration": 10800,
+      "totalWatchTime": 4500000
+    }
+  },
+  "timestamp": "2025-10-22T10:30:00.000Z"
 }
 ```
 
@@ -1271,6 +1427,42 @@ connect();
 
 ## 更新日誌
 
+### v1.2.0 (2025-10-22)
+
+**重大變更**:
+- ✅ PostgreSQL 整合完成（取代 DynamoDB）
+- ✅ 熱/冷數據分層架構（Redis + PostgreSQL）
+- ✅ 整合測試套件（含壓力測試、自動擴展測試）
+
+**新增功能**:
+- ✨ 新增 `POST /api/viewer/rejoin` - 觀眾重新加入
+- ✨ 新增 `GET /api/viewer/history/:userId` - 觀看歷史查詢
+- ✨ 新增 `GET /api/viewer/stats/:stageArn` - Stage 統計數據
+- ✨ 觀看記錄持久化到資料庫
+- ✨ 定期統計快照功能
+- ✨ 完整的整合測試框架
+
+**數據模型**:
+- 新增 `viewer_sessions` 表 - 觀看記錄
+- 新增 `viewer_stats_snapshots` 表 - 統計快照
+- 新增 `stages` 表 - Stage 配置
+- 新增 `users` 表 - 用戶資料
+
+**效能優化**:
+- 資料庫連接池（最大 20 連接）
+- 異步資料庫寫入（不阻塞 API 響應）
+- Redis 作為熱數據快取層
+
+**成本優化**:
+- 月費用從 $1,320 降至 $75（節省 94%）
+
+**詳細內容**:
+- 部署指南：`docs/DEPLOYMENT_GUIDE.md`
+- 架構說明：`docs/SIMPLE_ARCHITECTURE.md`
+- 成本分析：`docs/COST_OPTIMIZATION.md`
+
+---
+
 ### v1.1.0 (2025-10-21)
 
 **重大變更**:
@@ -1300,6 +1492,6 @@ connect();
 
 ---
 
-**文檔最後更新**: 2025-10-21
-**API 版本**: v1.1.0
+**文檔最後更新**: 2025-10-22
+**API 版本**: v1.2.0
 **維護者**: Your Team

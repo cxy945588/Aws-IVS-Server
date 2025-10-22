@@ -12,17 +12,14 @@
 |------|------|---------|
 | **[README.md](../README.md)** | 專案介紹、安裝和快速開始 | 所有用戶 |
 | **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** | PostgreSQL 部署完整指南 🆕 | 運維、開發者 |
-| **[API.md](API.md)** | 完整的 API 文檔（YApi 格式） | 開發者 |
-| **[DATA_FLOW.md](DATA_FLOW.md)** | 系統數據流程圖 | 開發者、架構師 |
+| **[API.md](API.md)** | 完整的 API 文檔（YApi 格式 v1.2.0） | 開發者 |
+| **[SIMPLE_ARCHITECTURE.md](SIMPLE_ARCHITECTURE.md)** | PostgreSQL 架構設計 | 架構師、開發者 |
 
-### 📖 架構與優化 🆕
+### 🧪 測試文檔 🆕
 
 | 文檔 | 描述 | 適合對象 |
 |------|------|---------|
-| **[SIMPLE_ARCHITECTURE.md](SIMPLE_ARCHITECTURE.md)** | 單 Server + PostgreSQL 架構方案 | 架構師、技術主管 |
-| **[COST_OPTIMIZATION.md](COST_OPTIMIZATION.md)** | 成本優化分析（節省 94%） | 技術主管、決策者 |
-| **[OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md)** | 生產環境優化指南 | 運維、開發者 |
-| **[QUICK_START_OPTIMIZATION.md](QUICK_START_OPTIMIZATION.md)** | Week 1 快速優化 | 開發者 |
+| **[../api-server/tests/integration/README.md](../api-server/tests/integration/README.md)** | 整合測試指南 | 開發者、QA |
 
 ### 📚 參考文檔
 
@@ -60,15 +57,27 @@
 
 ## 🏗️ 架構文檔
 
-### [數據流圖 →](DATA_FLOW.md)
+### [PostgreSQL 架構方案 →](SIMPLE_ARCHITECTURE.md)
 
-**系統數據流程和架構圖**，包含：
+**單 Server + PostgreSQL 混合架構**，包含：
 
-- 主播推流流程
-- 觀眾觀看流程
-- Token 生成流程
-- 自動擴展機制
-- 心跳追蹤機制
+- 熱/冷數據分層策略
+- Redis + PostgreSQL 整合設計
+- 資料庫 Schema 設計
+- 觀看記錄持久化
+- 定期快照機制
+- 成本優化分析（節省 94%）
+
+### [部署指南 →](DEPLOYMENT_GUIDE.md)
+
+**PostgreSQL 部署完整指南**，包含：
+
+- 環境準備與安裝
+- 資料庫初始化
+- Docker Compose 部署
+- 生產環境配置
+- 監控與維護
+- 故障排除
 
 ---
 
@@ -84,7 +93,7 @@
 - 錯誤修復記錄
 - 棄用和移除的功能
 
-**最新版本**: v1.1.0 (2025-10-21)
+**最新版本**: v1.2.0 (2025-10-22)
 
 ---
 
@@ -120,17 +129,18 @@
 
 ```
 docs/
-├── README.md              # 📚 本文件 - 文檔索引
-├── API.md                 # 📘 完整 API 文檔（YApi 格式）
-├── DATA_FLOW.md          # 🏗️ 數據流圖
-└── archive/              # 📦 歷史文檔
-    ├── README.md         # 存檔說明
-    ├── API.md            # 舊版 API 文檔
-    ├── API_DOCUMENTATION.md
-    ├── FIXES.md
-    ├── FIXES_2025-10-19.md
-    ├── STATS_API_FIX.md
-    └── ...               # 其他歷史文檔
+├── README.md                              # 📚 本文件 - 文檔索引
+├── API.md                                 # 📘 完整 API 文檔（YApi 格式 v1.2.0）
+├── SIMPLE_ARCHITECTURE.md                 # 🏗️ PostgreSQL 架構設計
+├── DEPLOYMENT_GUIDE.md                    # 🚀 部署指南
+└── archive/                               # 📦 歷史文檔
+    ├── README.md                          # 存檔說明
+    ├── API.md                             # 舊版 API 文檔
+    ├── DATA_FLOW_v1.1_DynamoDB.md         # 舊版數據流圖 ♻️
+    ├── COST_OPTIMIZATION_v1.1_DynamoDB.md # 舊版成本方案 ♻️
+    ├── OPTIMIZATION_GUIDE_v1.1_DynamoDB.md# 舊版優化指南 ♻️
+    ├── QUICK_START_OPTIMIZATION_v1.1.md   # 舊版快速優化 ♻️
+    └── ...                                # 其他歷史修復文檔
 ```
 
 ---
@@ -155,7 +165,11 @@ docs/
 
 ### 我想了解系統架構
 
-→ 閱讀 **[DATA_FLOW.md](DATA_FLOW.md)** 和 **[README.md - 系統架構](../README.md#系統架構)**
+→ 閱讀 **[SIMPLE_ARCHITECTURE.md](SIMPLE_ARCHITECTURE.md)** 和 **[README.md - 系統架構](../README.md#系統架構)**
+
+### 我要部署系統
+
+→ 查看 **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)**
 
 ### 我想知道版本更新了什麼
 
@@ -179,11 +193,13 @@ docs/
 - `DELETE /api/stage/:stageArn` - [刪除 Stage](API.md#34-刪除-stage)
 
 ### 觀眾管理
-- `POST /api/viewer/heartbeat` - [發送心跳](API.md#41-發送觀眾心跳)
-- `POST /api/viewer/leave` - [觀眾離開](API.md#42-觀眾離開)
-- `GET /api/viewer/list/:stageArn` - [獲取觀眾列表](API.md#43-獲取觀眾列表)
-- **`GET /api/viewer/history/:userId`** - [獲取觀看歷史](API.md) 🆕
-- **`GET /api/viewer/stats/:stageArn`** - [獲取 Stage 統計](API.md) 🆕
+- **`POST /api/viewer/rejoin`** - [觀眾重新加入](API.md#41-觀眾重新加入) 🆕
+- `POST /api/viewer/heartbeat` - [發送心跳](API.md#42-發送觀眾心跳)
+- `POST /api/viewer/leave` - [觀眾離開](API.md#43-觀眾離開)
+- `GET /api/viewer/list/:stageArn` - [獲取觀眾列表](API.md#44-獲取觀眾列表)
+- `GET /api/viewer/duration` - [獲取觀看時長](API.md#45-獲取觀看時長)
+- **`GET /api/viewer/history/:userId`** - [獲取觀看歷史](API.md#46-獲取觀看歷史) 🆕
+- **`GET /api/viewer/stats/:stageArn`** - [獲取 Stage 統計](API.md#47-獲取-stage-統計) 🆕
 
 ### 統計數據
 - `GET /api/stats` - [獲取總體統計](API.md#51-獲取總體統計)
@@ -239,10 +255,13 @@ docs/
 
 | 日期 | 版本 | 更新內容 |
 |------|------|---------|
-| 2025-10-22 | v3.0 | PostgreSQL 整合文檔（4 份新文檔） 🆕 |
-| 2025-10-22 | v3.0 | 更新 README, CHANGELOG, docs/README.md 🆕 |
-| 2025-10-22 | v3.0 | 新增 2 個 API 端點文檔 🆕 |
-| 2025-10-21 | v2.0 | 創建 YApi 格式完整 API 文檔 |
+| 2025-10-22 | v4.0 | API.md 更新至 v1.2.0，新增 3 個端點文檔 🆕 |
+| 2025-10-22 | v4.0 | 歸檔 DynamoDB 相關文檔到 archive 🆕 |
+| 2025-10-22 | v4.0 | CHANGELOG 新增 v1.2.0 版本說明（PostgreSQL + 測試） 🆕 |
+| 2025-10-22 | v4.0 | docs/README 更新導航，移除過時文檔引用 🆕 |
+| 2025-10-22 | v3.0 | PostgreSQL 整合文檔（DEPLOYMENT_GUIDE, SIMPLE_ARCHITECTURE） 🆕 |
+| 2025-10-22 | v3.0 | 整合測試套件文檔（tests/integration/README.md） 🆕 |
+| 2025-10-21 | v2.0 | 創建 YApi 格式完整 API 文檔 (v1.1.0) |
 | 2025-10-21 | v2.0 | 整理歷史文檔到 archive |
 | 2025-10-21 | v2.0 | 創建 CHANGELOG.md |
 | 2025-10-19 | v1.0 | 初始文檔版本 |
@@ -250,7 +269,7 @@ docs/
 ---
 
 **最後更新**: 2025-10-22
-**文檔版本**: 3.0
+**文檔版本**: 4.0
 **API 版本**: v1.2.0
 
 **⭐ 如果文檔對您有幫助，請給專案一個 Star！**

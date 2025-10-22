@@ -13,8 +13,9 @@
 - [ ] 添加單元測試覆蓋 (目標 70% 覆蓋率)
 - [ ] 完善 WebSocket 認證機制
 - [ ] 添加 Swagger/OpenAPI 文檔
-- [ ] 實現 Stage 配置的 PostgreSQL 持久化
 - [ ] 實現請求驗證層 (Joi/Yup)
+- [ ] PostgreSQL 讀寫分離優化
+- [ ] 實現 APM 監控 (Sentry/X-Ray)
 
 ---
 
@@ -40,6 +41,34 @@
 詳見: [部署指南](docs/DEPLOYMENT_GUIDE.md)
 
 ### ✨ 新增功能 (Added)
+
+#### 整合測試套件 🆕
+
+- **完整的整合測試** (`api-server/tests/integration/`) 🆕
+  - `01-environment-test.ts` - 環境檢查測試
+  - `02-redis-test.ts` - Redis 服務測試
+  - `03-api-test.ts` - API 端點測試
+  - `04-stress-test.ts` - 壓力測試（100 觀眾並發）
+  - `05-autoscaling-test.ts` - 自動擴展測試（模擬 50 觀眾觸發擴展）
+  - `run-tests.js` / `run-tests.ts` - 主測試腳本
+  - `test-config.ts` - 測試配置
+  - `README.md` - 測試文檔
+
+**特色**:
+- ✅ Rate Limit 處理：批次請求 + 重試邏輯
+- ✅ 真實場景模擬：自動擴展測試等待 30 秒健康檢查觸發
+- ✅ 完整清理機制：所有測試觀眾自動離開
+- ✅ 詳細進度顯示：即時顯示測試進度
+
+**執行方式**:
+```bash
+cd api-server/tests/integration
+npm test
+# 或跳過壓力測試
+SKIP_STRESS_TESTS=true npm test
+```
+
+詳見: `api-server/tests/integration/README.md`
 
 #### PostgreSQL 持久化層
 
@@ -147,12 +176,21 @@ DB_SSL_ENABLED=false
 - **新增核心文檔**:
   - `docs/DEPLOYMENT_GUIDE.md` - PostgreSQL 部署完整指南 🆕
   - `docs/SIMPLE_ARCHITECTURE.md` - 單 Server + PostgreSQL 架構方案 🆕
-  - `docs/COST_OPTIMIZATION.md` - 成本分析與 DynamoDB 對比 🆕
+  - `api-server/tests/integration/README.md` - 整合測試指南 🆕
 
 - **更新現有文檔**:
-  - `README.md` - 添加 PostgreSQL 說明、新 API 端點、成本優化
+  - `README.md` - 添加 PostgreSQL 說明、新 API 端點、整合測試說明
   - `CHANGELOG.md` - 本更新日誌
+  - `docs/API.md` - 更新至 v1.2.0，新增 3 個 API 端點
+  - `docs/README.md` - 更新文檔導航，移除過時文檔引用
   - `.env.example` - 添加 PostgreSQL 環境變數
+
+- **歸檔文檔** (移至 `docs/archive/`):
+  - `DATA_FLOW_v1.1_DynamoDB.md` - 舊版 DynamoDB 數據流程圖 ♻️
+  - `COST_OPTIMIZATION_v1.1_DynamoDB.md` - 舊版 DynamoDB 成本方案 ♻️
+  - `OPTIMIZATION_GUIDE_v1.1_DynamoDB.md` - 舊版 DynamoDB 優化指南 ♻️
+  - `QUICK_START_OPTIMIZATION_v1.1.md` - 舊版快速優化指南 ♻️
+  - **原因**: 這些文檔建議的 DynamoDB 實現未被採用，實際採用 PostgreSQL
 
 ### 💰 成本優化
 

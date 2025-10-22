@@ -64,7 +64,7 @@
 - 💰 **極低成本** - 單 Server + PostgreSQL 架構
 - 📉 **10,000 觀眾成本** - 僅 $75/月 vs DynamoDB $1,320/月
 - 🎯 **節省 94%** - 相比純 DynamoDB 方案
-- 📊 參見 [成本優化方案](docs/COST_OPTIMIZATION.md)
+- 📊 參見 [架構設計與成本分析](docs/SIMPLE_ARCHITECTURE.md)
 
 ---
 
@@ -527,7 +527,7 @@ docker-compose up -d
 
 ### Q: 為什麼使用 PostgreSQL 而不是 DynamoDB？
 
-A: PostgreSQL 方案成本極低（$75/月 vs DynamoDB $1,320/月），且更適合中小型直播平台（<50,000 觀眾）。詳見 [成本優化方案](docs/COST_OPTIMIZATION.md)
+A: PostgreSQL 方案成本極低（$75/月 vs DynamoDB $1,320/月），且更適合中小型直播平台（<50,000 觀眾）。詳見 [架構設計](docs/SIMPLE_ARCHITECTURE.md)
 
 ### Q: 如何獲取 AWS IVS Stage ARN？
 
@@ -579,8 +579,10 @@ curl http://localhost:3000/api/viewer/history/user-id
 
 **文檔**:
 - 📚 新增部署指南 (DEPLOYMENT_GUIDE.md)
-- 📚 新增簡化架構方案 (SIMPLE_ARCHITECTURE.md)
-- 📚 新增成本優化方案 (COST_OPTIMIZATION.md)
+- 📚 新增架構設計文檔 (SIMPLE_ARCHITECTURE.md)
+- 📚 新增整合測試文檔 (tests/integration/README.md)
+- 📚 API 文檔更新至 v1.2.0
+- 📚 歸檔 DynamoDB 相關文檔至 archive/
 
 ### v1.1.0 (2025-10-21)
 
@@ -610,18 +612,19 @@ curl http://localhost:3000/api/viewer/history/user-id
 ## 📖 相關文檔
 
 ### 核心文檔
-- 📘 [完整 API 文檔](docs/API.md) - YApi 格式完整文檔
-- 📗 [數據流圖](docs/DATA_FLOW.md) - 系統數據流程
+- 📘 [完整 API 文檔](docs/API.md) - YApi 格式完整文檔（v1.2.0）
 - 📕 [更新日誌](CHANGELOG.md) - 版本更新記錄
+- 📚 [文檔中心](docs/README.md) - 所有文檔導航
 
-### 新增文檔 🆕
+### PostgreSQL 整合 🆕
 - 🚀 [部署指南](docs/DEPLOYMENT_GUIDE.md) - PostgreSQL 部署完整指南
-- 💡 [簡化架構方案](docs/SIMPLE_ARCHITECTURE.md) - 單 Server + PostgreSQL 架構
-- 💰 [成本優化方案](docs/COST_OPTIMIZATION.md) - 成本分析與對比
-- ⚡ [優化指南](docs/OPTIMIZATION_GUIDE.md) - 生產環境優化建議
+- 💡 [架構設計](docs/SIMPLE_ARCHITECTURE.md) - 單 Server + PostgreSQL 架構與成本分析
+
+### 測試文檔 🧪
+- ✅ [整合測試指南](api-server/tests/integration/README.md) - 完整測試套件說明
 
 ### 歷史文檔
-- 📙 [修復記錄](docs/archive/) - 歷史修復記錄
+- 📙 [歸檔文檔](docs/archive/) - 歷史文檔（v1.1 DynamoDB 相關文檔）
 
 ---
 

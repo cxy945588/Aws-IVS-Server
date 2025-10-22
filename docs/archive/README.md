@@ -16,6 +16,28 @@
   - 替代文檔: [`../API.md`](../API.md)
   - 棄用日期: 2025-10-21
 
+### 架構文檔 (v1.1 - DynamoDB 版本)
+
+- **DATA_FLOW_v1.1_DynamoDB.md** - 舊版數據流程圖（基於 DynamoDB）
+  - 替代文檔: [`../SIMPLE_ARCHITECTURE.md`](../SIMPLE_ARCHITECTURE.md)
+  - 棄用日期: 2025-10-22
+  - 棄用原因: 專案已改用 PostgreSQL 架構
+
+- **COST_OPTIMIZATION_v1.1_DynamoDB.md** - 舊版成本優化方案（DynamoDB 快照方案）
+  - 替代文檔: [`../SIMPLE_ARCHITECTURE.md`](../SIMPLE_ARCHITECTURE.md) 和 [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md)
+  - 棄用日期: 2025-10-22
+  - 棄用原因: 實際實現採用 PostgreSQL 而非 DynamoDB 快照
+
+- **OPTIMIZATION_GUIDE_v1.1_DynamoDB.md** - 舊版優化指南（建議實現 DynamoDB）
+  - 替代文檔: 實際實現已採用 PostgreSQL，無需此優化
+  - 棄用日期: 2025-10-22
+  - 棄用原因: 建議的 DynamoDB 實現未被採用
+
+- **QUICK_START_OPTIMIZATION_v1.1.md** - 舊版快速優化指南（Week 1）
+  - 替代文檔: 整合測試套件已完成 ([`../../api-server/tests/integration/`](../../api-server/tests/integration/))
+  - 棄用日期: 2025-10-22
+  - 棄用原因: 建議的 DynamoDB 實現未被採用
+
 ### 修復記錄 (歷史)
 
 - **FIXES.md** - 初期修復記錄
@@ -68,7 +90,15 @@
 ├── v1.1.0 版本發布
 ├── 統一 API 回應格式
 ├── 創建完整的 YApi API 文檔
-└── 整理歷史文檔到 archive
+├── 整理歷史文檔到 archive
+└── 建議 DynamoDB 實現方案（未採用）
+
+2025-10-22
+├── v1.2.0 版本發布
+├── 採用 PostgreSQL 作為持久化方案
+├── 完成整合測試套件
+├── 歸檔 DynamoDB 相關文檔
+└── 更新為 PostgreSQL 架構文檔
 ```
 
 ---
@@ -91,5 +121,5 @@
 
 ---
 
-**最後更新**: 2025-10-21
+**最後更新**: 2025-10-22
 **維護者**: Your Team
