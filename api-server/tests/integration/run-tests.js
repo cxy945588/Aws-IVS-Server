@@ -63,8 +63,8 @@ async function main() {
       throw new Error(`服务器返回错误状态: ${response.status}`);
     }
     const data = await response.json();
-    if (data.status !== 'success') {
-      throw new Error(`API 响应状态异常: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
     if (!data.data || data.data.status !== 'healthy') {
       throw new Error(`服务器健康状态异常: ${data.data?.status || 'unknown'}`);
@@ -97,8 +97,8 @@ async function main() {
     }
 
     const data = await response.json();
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
     if (typeof data.data.viewerCount !== 'number') {
       throw new Error('响应数据格式错误，缺少 viewerCount');
@@ -119,8 +119,8 @@ async function main() {
     }
 
     const data = await response.json();
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
   });
 
@@ -135,8 +135,8 @@ async function main() {
     }
 
     const data = await response.json();
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
     if (!Array.isArray(data.data.viewers)) {
       throw new Error('响应数据应该包含 viewers 数组');
@@ -160,8 +160,8 @@ async function main() {
     }
 
     const data = await response.json();
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
     if (typeof data.data.totalDuration !== 'number') {
       throw new Error('响应数据应该包含 totalDuration 数字');
@@ -182,8 +182,8 @@ async function main() {
     }
 
     const data = await response.json();
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
   });
 
@@ -204,8 +204,8 @@ async function main() {
     }
 
     const data = await response.json();
-    if (data.status !== 'error') {
-      throw new Error(`响应状态应该是 error，实际: ${data.status}`);
+    if (data.success !== false) {
+      throw new Error(`响应应该是失败，实际: ${JSON.stringify(data)}`);
     }
   });
 

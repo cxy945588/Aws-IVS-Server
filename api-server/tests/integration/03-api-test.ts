@@ -62,8 +62,8 @@ async function testViewerRejoin(
     const data = await response.json();
 
     // 验证响应格式
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
 
     if (!data.data || typeof data.data.viewerCount !== 'number') {
@@ -255,8 +255,8 @@ async function testParameterValidation(): Promise<TestResult> {
 
     const data = await response.json();
 
-    if (data.status !== 'error') {
-      throw new Error(`响应状态应该是 error，实际: ${data.status}`);
+    if (data.success !== false) {
+      throw new Error(`响应应该是失败，实际: ${JSON.stringify(data)}`);
     }
 
     console.log('✓', name);
