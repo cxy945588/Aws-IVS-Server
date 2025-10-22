@@ -186,7 +186,9 @@ async function testStageList(): Promise<TestResult> {
         stageCount: stages.length,
         stages: stages.map((s: any) => ({
           name: s.name,
-          arn: s.arn?.substring(s.arn.length - 12) || 'unknown',
+          stageArn: s.stageArn?.substring(s.stageArn.length - 12) || 'unknown',
+          viewerCount: s.viewerCount,
+          autoScaled: s.autoScaled,
         })),
       },
     };
