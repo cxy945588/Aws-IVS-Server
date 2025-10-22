@@ -38,7 +38,7 @@ export class PostgresService {
       logger.debug('PostgreSQL 新連接已建立');
     });
 
-    this.pool.on('error', (err) => {
+    this.pool.on('error', (err: Error) => {
       this.isConnected = false;
       logger.error('PostgreSQL 連接池錯誤', { error: err.message });
     });
