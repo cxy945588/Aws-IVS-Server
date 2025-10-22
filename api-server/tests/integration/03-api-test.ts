@@ -66,8 +66,8 @@ async function testViewerRejoin(
       throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
 
-    if (!data.data || typeof data.data.viewerCount !== 'number') {
-      throw new Error('响应数据格式错误，缺少 viewerCount');
+    if (!data.data || typeof data.data.currentViewers !== 'number') {
+      throw new Error('响应数据格式错误，缺少 currentViewers');
     }
 
     if (duration > TEST_CONFIG.thresholds.maxResponseTime) {
@@ -80,7 +80,7 @@ async function testViewerRejoin(
       status: 'pass',
       duration,
       details: {
-        viewerCount: data.data.viewerCount,
+        currentViewers: data.data.currentViewers,
         userId,
       },
     };
@@ -115,8 +115,8 @@ async function testViewerHeartbeat(userId: string, stageArn: string): Promise<Te
 
     const data = await response.json();
 
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
 
     if (duration > TEST_CONFIG.thresholds.maxResponseTime) {
@@ -158,25 +158,26 @@ async function testGetViewerList(stageArn: string): Promise<TestResult> {
 
     const data = await response.json();
 
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
 
     if (!Array.isArray(data.data.viewers)) {
       throw new Error('响应数据应该包含 viewers 数组');
     }
 
-    if (typeof data.data.totalCount !== 'number') {
-      throw new Error('响应数据应该包含 totalCount 数字');
+    if (typeof data.data.totalViewers !== 'number') {
+      throw new Error('响应数据应该包含 totalViewers 数字');
     }
 
-    console.log('✓', name, `(${duration}ms, ${data.data.totalCount} viewers)`);
+    console.log('✓', name, `(${duration}ms, ${data.data.totalViewers} viewers)`);
     return {
       name,
       status: 'pass',
       duration,
       details: {
-        totalCount: data.data.totalCount,
+        totalViewers: data.data.totalViewers,
+        activeViewers: data.data.activeViewers,
         viewersReturned: data.data.viewers.length,
       },
     };
@@ -211,8 +212,8 @@ async function testViewerLeave(userId: string, stageArn: string): Promise<TestRe
 
     const data = await response.json();
 
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
 
     console.log('✓', name, `(${duration}ms)`);
@@ -296,22 +297,22 @@ async function testGetViewDuration(userId: string, stageArn: string): Promise<Te
 
     const data = await response.json();
 
-    if (data.status !== 'success') {
-      throw new Error(`响应状态应该是 success，实际: ${data.status}`);
+    if (data.success !== true) {
+      throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
 
-    if (typeof data.data.totalDuration !== 'number') {
-      throw new Error('响应数据应该包含 totalDuration 数字');
+    if (typeof data.data.watchDurationSeconds !== 'number') {
+      throw new Error('响应数据应该包含 watchDurationSeconds 数字');
     }
 
-    console.log('✓', name, `(${duration}ms, ${data.data.totalDuration}s)`);
+    console.log('✓', name, `(${duration}ms, ${data.data.watchDurationSeconds}s)`);
     return {
       name,
       status: 'pass',
       duration,
       details: {
-        totalDuration: data.data.totalDuration,
-        sessionCount: data.data.sessionCount,
+        watchDurationSeconds: data.data.watchDurationSeconds,
+        watchDurationFormatted: data.data.watchDurationFormatted,
       },
     };
   } catch (error: any) {

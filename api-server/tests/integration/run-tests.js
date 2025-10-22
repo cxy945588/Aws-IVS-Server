@@ -100,8 +100,8 @@ async function main() {
     if (data.success !== true) {
       throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
-    if (typeof data.data.viewerCount !== 'number') {
-      throw new Error('响应数据格式错误，缺少 viewerCount');
+    if (typeof data.data.currentViewers !== 'number') {
+      throw new Error('响应数据格式错误，缺少 currentViewers');
     }
   });
 
@@ -141,8 +141,8 @@ async function main() {
     if (!Array.isArray(data.data.viewers)) {
       throw new Error('响应数据应该包含 viewers 数组');
     }
-    if (typeof data.data.totalCount !== 'number') {
-      throw new Error('响应数据应该包含 totalCount 数字');
+    if (typeof data.data.totalViewers !== 'number') {
+      throw new Error('响应数据应该包含 totalViewers 数字');
     }
   });
 
@@ -163,8 +163,8 @@ async function main() {
     if (data.success !== true) {
       throw new Error(`API 响应失败: ${JSON.stringify(data)}`);
     }
-    if (typeof data.data.totalDuration !== 'number') {
-      throw new Error('响应数据应该包含 totalDuration 数字');
+    if (typeof data.data.watchDurationSeconds !== 'number') {
+      throw new Error('响应数据应该包含 watchDurationSeconds 数字');
     }
   });
 
