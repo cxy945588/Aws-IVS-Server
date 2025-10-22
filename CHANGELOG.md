@@ -10,11 +10,230 @@
 ## [Unreleased]
 
 ### 計劃中
-- [ ] 添加單元測試覆蓋
-- [ ] 實現 DynamoDB 持久化
+- [ ] 添加單元測試覆蓋 (目標 70% 覆蓋率)
 - [ ] 完善 WebSocket 認證機制
 - [ ] 添加 Swagger/OpenAPI 文檔
-- [ ] 實現分散式交易日誌
+- [ ] 實現 Stage 配置的 PostgreSQL 持久化
+- [ ] 實現請求驗證層 (Joi/Yup)
+
+---
+
+## [1.2.0] - 2025-10-22
+
+### 🔄 重大變更 (Breaking Changes)
+
+#### PostgreSQL 整合
+**影響**: 系統架構
+**說明**: 從純 Redis 架構升級為 Redis + PostgreSQL 混合架構
+
+**變更內容**:
+- 熱數據（觀眾心跳、實時計數）仍存儲在 Redis
+- 冷數據（觀看記錄、統計快照）持久化到 PostgreSQL
+- 新增資料庫依賴 `pg` 和 `@types/pg`
+
+**升級指引**:
+1. 安裝 PostgreSQL 12+
+2. 執行 `database/schema.sql` 創建表
+3. 配置環境變數 `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+4. 重新安裝依賴 `npm install`
+
+詳見: [部署指南](docs/DEPLOYMENT_GUIDE.md)
+
+### ✨ 新增功能 (Added)
+
+#### PostgreSQL 持久化層
+
+- **PostgresService** (`services/PostgresService.ts`) 🆕
+  - 連接池管理 (max: 20, min: 2)
+  - `query()` - SQL 查詢執行
+  - `transaction()` - 事務支持
+  - `ping()` - 連接測試
+  - `getPoolStats()` - 連接池監控
+  - `cleanupOldData()` - 清理 90 天前的快照數據
+
+- **ViewerRecordService** (`services/ViewerRecordService.ts`) 🆕
+  - `recordJoin()` - 異步記錄觀眾加入
+  - `recordLeave()` - 異步更新觀眾離開
+  - `getViewerHistory()` - 查詢觀看歷史
+  - `getStageStats()` - 查詢 Stage 統計（7/30/90 天）
+  - `getActiveViewers()` - 查詢資料庫中的活躍觀眾
+  - `closeStaleSessions()` - 關閉 10 分鐘無心跳的 Session
+
+- **StatsSnapshotService** (`services/StatsSnapshotService.ts`) 🆕
+  - `start()` - 啟動定期快照（每 5 分鐘）
+  - `takeSnapshot()` - 執行快照（將 Redis 數據同步到 PostgreSQL）
+  - `restoreFromSnapshot()` - 從 PostgreSQL 恢復數據到 Redis
+  - `getSnapshotStats()` - 獲取快照統計
+  - `getStageTimeSeries()` - 獲取時序數據（24 小時）
+  - 自動清理：保留 90 天歷史數據
+
+#### 資料庫 Schema
+
+- **`database/schema.sql`** 🆕
+  - `stages` 表：Stage 配置持久化
+  - `users` 表：用戶資料（可選）
+  - `viewer_sessions` 表：完整觀看記錄（加入時間、離開時間、觀看時長）
+  - `viewer_stats_snapshots` 表：時序統計快照（每 5 分鐘）
+  - 自動更新觸發器 (`update_updated_at_column`)
+  - 清理舊數據函數 (`cleanup_old_snapshots`)
+  - 查詢視圖 (`active_viewers`, `stage_stats_7d`)
+
+#### 新增 API 端點
+
+- **`GET /api/viewer/history/:userId`** 🆕
+  - 查詢觀眾的觀看歷史記錄
+  - 支持分頁 (`?limit=10`)
+  - 返回：加入時間、離開時間、觀看時長
+  - 詳見: `routes/viewer.ts:209-229`
+
+- **`GET /api/viewer/stats/:stageArn`** 🆕
+  - 查詢 Stage 的統計數據
+  - 支持時間範圍 (`?days=7`)
+  - 返回：總觀看次數、唯一觀眾數、平均/最大觀看時長
+  - 詳見: `routes/viewer.ts:231-260`
+
+### 🔧 改進 (Changed)
+
+#### 數據分層架構
+
+**熱數據 → Redis** (毫秒級性能)
+- 觀眾心跳 (TTL: 2 分鐘)
+- 實時觀眾計數
+- 在線狀態
+
+**冷數據 → PostgreSQL** (永久保存)
+- 觀看記錄（完整歷史）
+- 統計快照（每 5 分鐘）
+- Stage 配置
+
+**關鍵設計**:
+- ✅ 異步寫入資料庫，不阻塞 API 響應
+- ✅ 定期快照機制，Redis 重啟可恢復
+- ✅ 自動清理舊數據，節省存儲成本
+
+#### API 路由改進
+
+- **`POST /api/viewer/rejoin`** (已更新)
+  - 同步更新 Redis（即時）
+  - 異步寫入 PostgreSQL（不阻塞）
+  - 記錄 `user_agent` 和 `ip_address`
+  - 詳見: `routes/viewer.ts:25-77`
+
+- **`POST /api/viewer/leave`** (已更新)
+  - 同步更新 Redis
+  - 異步更新 PostgreSQL（計算觀看時長）
+  - 詳見: `routes/viewer.ts:116-148`
+
+#### 環境變數新增
+
+新增 PostgreSQL 配置項：
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=ivs_live
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_POOL_MAX=20
+DB_POOL_MIN=2
+DB_SSL_ENABLED=false
+```
+
+### 🐛 修復 (Fixed)
+
+無（本版本專注於新功能）
+
+### 📚 文檔 (Documentation)
+
+- **新增核心文檔**:
+  - `docs/DEPLOYMENT_GUIDE.md` - PostgreSQL 部署完整指南 🆕
+  - `docs/SIMPLE_ARCHITECTURE.md` - 單 Server + PostgreSQL 架構方案 🆕
+  - `docs/COST_OPTIMIZATION.md` - 成本分析與 DynamoDB 對比 🆕
+
+- **更新現有文檔**:
+  - `README.md` - 添加 PostgreSQL 說明、新 API 端點、成本優化
+  - `CHANGELOG.md` - 本更新日誌
+  - `.env.example` - 添加 PostgreSQL 環境變數
+
+### 💰 成本優化
+
+#### 架構對比
+
+| 方案 | 10,000 觀眾成本 | 複雜度 | 數據持久化 |
+|------|----------------|--------|-----------|
+| 純 DynamoDB | $1,320/月 | 低 | ✅ |
+| Redis + DynamoDB 快照 | $24/月 | 中 | ✅ |
+| **Redis + PostgreSQL (v1.2.0)** | **$75/月** | **低** | **✅** |
+
+**成本節省**: 相比純 DynamoDB 方案節省 **94%**
+
+**適用場景**:
+- ✅ 中小型直播平台（< 50,000 觀眾）
+- ✅ 已有網站 API 基礎設施
+- ✅ 團隊熟悉傳統資料庫
+- ✅ 預算有限
+
+詳見: [成本優化方案](docs/COST_OPTIMIZATION.md)
+
+### 🔐 安全性 (Security)
+
+- PostgreSQL 連接支持 SSL/TLS (`DB_SSL_ENABLED=true`)
+- 環境變數隔離敏感資訊
+- 連接池限制防止資源耗盡
+
+### ⚠️ 棄用 (Deprecated)
+
+無
+
+### 🗑️ 移除 (Removed)
+
+- ❌ 移除 `[Unreleased]` 計劃中的「實現 DynamoDB 持久化」
+  - **原因**: 改用 PostgreSQL，成本更低、更適合中小型場景
+
+### 🎯 升級步驟
+
+從 v1.1.0 升級到 v1.2.0：
+
+1. **安裝 PostgreSQL**
+   ```bash
+   docker run -d --name ivs-postgres \
+     -e POSTGRES_PASSWORD=your_password \
+     -e POSTGRES_DB=ivs_live \
+     -p 5432:5432 postgres:15
+   ```
+
+2. **創建資料庫表**
+   ```bash
+   psql -U postgres -d ivs_live -f database/schema.sql
+   ```
+
+3. **更新環境變數**
+   ```bash
+   # 編輯 .env 添加 PostgreSQL 配置
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_NAME=ivs_live
+   DB_USER=postgres
+   DB_PASSWORD=your_password
+   ```
+
+4. **安裝依賴**
+   ```bash
+   npm install
+   ```
+
+5. **啟動服務**
+   ```bash
+   npm run build
+   npm start
+   ```
+
+6. **驗證部署**
+   ```bash
+   curl http://localhost:3000/api/health
+   # 應返回包含 PostgreSQL 狀態的回應
+   ```
+
+詳細指南: [部署指南](docs/DEPLOYMENT_GUIDE.md)
 
 ---
 
