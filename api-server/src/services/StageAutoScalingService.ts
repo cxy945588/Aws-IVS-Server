@@ -16,6 +16,7 @@ import {
   ListStagesCommand,
 } from '@aws-sdk/client-ivs-realtime';
 import { RedisService } from './RedisService';
+import { IVSService } from './IVSService';
 import { logger } from '../utils/logger';
 import { STAGE_CONFIG } from '../utils/constants';
 
@@ -214,23 +215,72 @@ export class StageAutoScalingService {
       const response = await this.client.send(command);
 
       if (response.stage?.arn) {
+        const newStageArn = response.stage.arn;
+
         // 在 Redis 中記錄新 Stage (包含完整 ARN)
-        await redis.setStageInfo(response.stage.arn, {
+        await redis.setStageInfo(newStageArn, {
           name: newStageName,
-          arn: response.stage.arn, // ✅ 儲存完整 ARN
+          arn: newStageArn, // ✅ 儲存完整 ARN
           autoScaled: true,
           createdAt: new Date().toISOString(),
           parentStage: stageArn,
         });
 
         logger.info('✅ 自動擴展：創建新 Stage', {
-          newStageArn: response.stage.arn.substring(response.stage.arn.length - 12),
+          newStageArn: newStageArn.substring(newStageArn.length - 12),
           newStageName,
           reason: `使用率 ${(utilizationRate * 100).toFixed(1)}% > 90%`,
           totalViewersNow: totalViewers,
           newTotalCapacity: (stages.length + 1) * 50,
           totalStages: stages.length + 1,
         });
+
+        // ✅ 新功能：啟動 Participant Replication
+        // 將主播從源 Stage 複製到新 Stage
+        try {
+          const publisherInfo = await redis.getPublisherInfo();
+
+          if (publisherInfo && publisherInfo.participantId) {
+            logger.info('🔄 開始啟動 Participant Replication', {
+              participantId: publisherInfo.participantId,
+              sourceStage: publisherInfo.stageArn.substring(publisherInfo.stageArn.length - 12),
+              destStage: newStageArn.substring(newStageArn.length - 12),
+            });
+
+            const ivsService = new IVSService();
+            await ivsService.startParticipantReplication(
+              publisherInfo.stageArn,
+              newStageArn,
+              publisherInfo.participantId
+            );
+
+            // 記錄 Replication 狀態
+            await redis.setReplicationStatus(
+              publisherInfo.stageArn,
+              newStageArn,
+              publisherInfo.participantId
+            );
+
+            logger.info('✅ Participant Replication 已啟動', {
+              participantId: publisherInfo.participantId,
+              sourceStage: publisherInfo.stageArn.substring(publisherInfo.stageArn.length - 12),
+              destStage: newStageArn.substring(newStageArn.length - 12),
+            });
+          } else {
+            logger.warn('⚠️ 無法啟動 Participant Replication：找不到主播資訊', {
+              publisherInfo: publisherInfo ? '存在但缺少 participantId' : '不存在',
+            });
+          }
+        } catch (replicationError: any) {
+          // Replication 失敗不影響 Stage 創建
+          logger.error('❌ Participant Replication 啟動失敗（不影響 Stage 創建）', {
+            error: replicationError.message,
+            newStageArn: newStageArn.substring(newStageArn.length - 12),
+            suggestion: replicationError.message.includes('SDK')
+              ? '請升級 @aws-sdk/client-ivs-realtime 到最新版本'
+              : '請檢查主播是否在線',
+          });
+        }
       }
     } catch (error: any) {
       logger.error('❌ 自動擴展失敗', { error: error.message, stack: error.stack });
@@ -278,6 +328,39 @@ export class StageAutoScalingService {
           viewerCount: currentViewerCount,
         });
         return;
+      }
+
+      // ✅ 新功能：在刪除 Stage 前停止 Participant Replication
+      try {
+        const replicationStatus = await redis.getReplicationStatus(stageArn);
+
+        if (replicationStatus) {
+          logger.info('🛑 停止 Participant Replication', {
+            participantId: replicationStatus.participantId,
+            sourceStage: replicationStatus.sourceStageArn.substring(replicationStatus.sourceStageArn.length - 12),
+            destStage: stageArn.substring(stageArn.length - 12),
+          });
+
+          const ivsService = new IVSService();
+          await ivsService.stopParticipantReplication(
+            replicationStatus.sourceStageArn,
+            stageArn,
+            replicationStatus.participantId
+          );
+
+          // 清除 Replication 狀態
+          await redis.clearReplicationStatus(stageArn);
+
+          logger.info('✅ Participant Replication 已停止', {
+            destStage: stageArn.substring(stageArn.length - 12),
+          });
+        }
+      } catch (replicationError: any) {
+        // Replication 停止失敗不影響 Stage 刪除
+        logger.warn('⚠️ Participant Replication 停止失敗（不影響 Stage 刪除）', {
+          error: replicationError.message,
+          stageArn: stageArn.substring(stageArn.length - 12),
+        });
       }
 
       // 刪除 Stage

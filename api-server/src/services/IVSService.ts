@@ -4,7 +4,7 @@
  */
 
 import {
-  IVSRealTimeClient, 
+  IVSRealTimeClient,
   CreateParticipantTokenCommand,
   CreateParticipantTokenCommandInput,
   CreateParticipantTokenCommandOutput,
@@ -196,6 +196,190 @@ export class IVSService {
    */
   getClient(): IVSRealTimeClient {
     return this.client;
+  }
+
+  /**
+   * 啟動參與者複製
+   * 將主播從源 Stage 複製到目標 Stage
+   *
+   * @param sourceStageArn 源 Stage ARN（主播所在的 Stage）
+   * @param destinationStageArn 目標 Stage ARN（要複製到的 Stage）
+   * @param participantId 主播的 Participant ID
+   */
+  async startParticipantReplication(
+    sourceStageArn: string,
+    destinationStageArn: string,
+    participantId: string
+  ): Promise<void> {
+    const startTime = Date.now();
+
+    try {
+      logger.debug('正在啟動參與者複製', {
+        participantId,
+        sourceStage: sourceStageArn.substring(sourceStageArn.length - 12),
+        destStage: destinationStageArn.substring(destinationStageArn.length - 12),
+      });
+
+      // 使用 AWS SDK 的 StartParticipantReplication 命令
+      // 注意：需要 @aws-sdk/client-ivs-realtime >= 3.600.0
+      const command = {
+        input: {
+          sourceStageArn,
+          destinationStageArn,
+          participantId,
+        },
+        name: 'StartParticipantReplicationCommand',
+      };
+
+      // 使用動態導入或直接調用
+      // @ts-ignore - SDK 版本可能不支持
+      const { StartParticipantReplicationCommand } = await import('@aws-sdk/client-ivs-realtime');
+
+      // @ts-ignore
+      const replicationCommand = new StartParticipantReplicationCommand({
+        sourceStageArn,
+        destinationStageArn,
+        participantId,
+      });
+
+      await this.client.send(replicationCommand);
+
+      const duration = Date.now() - startTime;
+      logger.info('✅ 參與者複製已啟動', {
+        participantId,
+        sourceStage: sourceStageArn.substring(sourceStageArn.length - 12),
+        destStage: destinationStageArn.substring(destinationStageArn.length - 12),
+        duration: `${duration}ms`,
+      });
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+
+      // 如果是 SDK 版本問題，提供友好的錯誤訊息
+      if (error.message?.includes('Cannot find module') || error.message?.includes('StartParticipantReplicationCommand')) {
+        logger.error('❌ Participant Replication 功能需要更新 AWS SDK', {
+          currentVersion: '3.500.0',
+          requiredVersion: '>=3.600.0',
+          updateCommand: 'npm install @aws-sdk/client-ivs-realtime@latest',
+          duration: `${duration}ms`,
+        });
+        throw new Error('需要更新 @aws-sdk/client-ivs-realtime 到最新版本才能使用 Participant Replication 功能');
+      }
+
+      logger.error('❌ 參與者複製啟動失敗', {
+        participantId,
+        error: error.message,
+        duration: `${duration}ms`,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * 停止參與者複製
+   * 停止將主播複製到目標 Stage
+   *
+   * @param sourceStageArn 源 Stage ARN
+   * @param destinationStageArn 目標 Stage ARN
+   * @param participantId 主播的 Participant ID
+   */
+  async stopParticipantReplication(
+    sourceStageArn: string,
+    destinationStageArn: string,
+    participantId: string
+  ): Promise<void> {
+    const startTime = Date.now();
+
+    try {
+      logger.debug('正在停止參與者複製', {
+        participantId,
+        sourceStage: sourceStageArn.substring(sourceStageArn.length - 12),
+        destStage: destinationStageArn.substring(destinationStageArn.length - 12),
+      });
+
+      // @ts-ignore - SDK 版本可能不支持
+      const { StopParticipantReplicationCommand } = await import('@aws-sdk/client-ivs-realtime');
+
+      // @ts-ignore
+      const replicationCommand = new StopParticipantReplicationCommand({
+        sourceStageArn,
+        destinationStageArn,
+        participantId,
+      });
+
+      await this.client.send(replicationCommand);
+
+      const duration = Date.now() - startTime;
+      logger.info('✅ 參與者複製已停止', {
+        participantId,
+        sourceStage: sourceStageArn.substring(sourceStageArn.length - 12),
+        destStage: destinationStageArn.substring(destinationStageArn.length - 12),
+        duration: `${duration}ms`,
+      });
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+
+      if (error.message?.includes('Cannot find module') || error.message?.includes('StopParticipantReplicationCommand')) {
+        logger.error('❌ Participant Replication 功能需要更新 AWS SDK', {
+          currentVersion: '3.500.0',
+          requiredVersion: '>=3.600.0',
+          updateCommand: 'npm install @aws-sdk/client-ivs-realtime@latest',
+          duration: `${duration}ms`,
+        });
+        throw new Error('需要更新 @aws-sdk/client-ivs-realtime 到最新版本才能使用 Participant Replication 功能');
+      }
+
+      logger.error('❌ 參與者複製停止失敗', {
+        participantId,
+        error: error.message,
+        duration: `${duration}ms`,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * 列出參與者複製狀態
+   * 查詢某個 Stage 的所有複製關係
+   *
+   * @param stageArn Stage ARN
+   */
+  async listParticipantReplications(stageArn: string): Promise<any[]> {
+    try {
+      logger.debug('正在查詢參與者複製列表', {
+        stageArn: stageArn.substring(stageArn.length - 12),
+      });
+
+      // @ts-ignore - SDK 版本可能不支持
+      const { ListParticipantsCommand } = await import('@aws-sdk/client-ivs-realtime');
+
+      // @ts-ignore
+      const command = new ListParticipantsCommand({
+        stageArn,
+      });
+
+      const response = await this.client.send(command);
+
+      logger.info('✅ 參與者複製列表已獲取', {
+        stageArn: stageArn.substring(stageArn.length - 12),
+        count: response.participants?.length || 0,
+      });
+
+      return response.participants || [];
+    } catch (error: any) {
+      if (error.message?.includes('Cannot find module')) {
+        logger.error('❌ Participant Replication 功能需要更新 AWS SDK', {
+          currentVersion: '3.500.0',
+          requiredVersion: '>=3.600.0',
+          updateCommand: 'npm install @aws-sdk/client-ivs-realtime@latest',
+        });
+        throw new Error('需要更新 @aws-sdk/client-ivs-realtime 到最新版本才能使用 Participant Replication 功能');
+      }
+
+      logger.error('❌ 查詢參與者複製列表失敗', {
+        error: error.message,
+      });
+      throw error;
+    }
   }
 }
 

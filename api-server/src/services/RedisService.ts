@@ -308,6 +308,75 @@ export class RedisService {
     return status === 'live';
   }
 
+  // 設定主播資訊（包含 participantId）
+  async setPublisherInfo(participantId: string, stageArn: string, userId: string): Promise<void> {
+    const info = {
+      participantId,
+      stageArn,
+      userId,
+      joinedAt: new Date().toISOString(),
+    };
+    await this.set('publisher:info', JSON.stringify(info), 86400);
+    logger.info('✅ 主播資訊已存儲', {
+      participantId,
+      stageArn: stageArn.substring(stageArn.length - 12),
+      userId,
+    });
+  }
+
+  // 獲取主播資訊
+  async getPublisherInfo(): Promise<{ participantId: string; stageArn: string; userId: string; joinedAt: string } | null> {
+    const info = await this.get('publisher:info');
+    if (!info) {
+      return null;
+    }
+    try {
+      return JSON.parse(info);
+    } catch (error: any) {
+      logger.error('解析主播資訊失敗', { error: error.message });
+      return null;
+    }
+  }
+
+  // 清除主播資訊
+  async clearPublisherInfo(): Promise<void> {
+    await this.del('publisher:info');
+    logger.info('✅ 主播資訊已清除');
+  }
+
+  // 設定 Participant Replication 狀態
+  async setReplicationStatus(sourceStageArn: string, destStageArn: string, participantId: string): Promise<void> {
+    const key = `replication:${destStageArn}`;
+    const info = {
+      sourceStageArn,
+      destStageArn,
+      participantId,
+      startedAt: new Date().toISOString(),
+    };
+    await this.set(key, JSON.stringify(info), 86400);
+    logger.debug('Replication 狀態已記錄', {
+      sourceStage: sourceStageArn.substring(sourceStageArn.length - 12),
+      destStage: destStageArn.substring(destStageArn.length - 12),
+      participantId,
+    });
+  }
+
+  // 獲取 Replication 狀態
+  async getReplicationStatus(destStageArn: string): Promise<any | null> {
+    const key = `replication:${destStageArn}`;
+    const info = await this.get(key);
+    return info ? JSON.parse(info) : null;
+  }
+
+  // 清除 Replication 狀態
+  async clearReplicationStatus(destStageArn: string): Promise<void> {
+    const key = `replication:${destStageArn}`;
+    await this.del(key);
+    logger.debug('Replication 狀態已清除', {
+      destStage: destStageArn.substring(destStageArn.length - 12),
+    });
+  }
+
   // ==========================================
   // 工具方法
   // ==========================================

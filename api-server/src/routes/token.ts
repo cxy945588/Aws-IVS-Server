@@ -57,6 +57,9 @@ router.post('/publisher', async (req: Request, res: Response) => {
     const redis = RedisService.getInstance();
     await redis.setPublisherStatus(true);
 
+    // 存儲主播資訊（包含 participantId，用於 Participant Replication）
+    await redis.setPublisherInfo(token.participantId, token.stageArn, userId);
+
     // 返回完整資訊
     sendSuccess(res, {
       token: token.token,
