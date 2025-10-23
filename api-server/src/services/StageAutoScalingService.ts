@@ -273,13 +273,27 @@ export class StageAutoScalingService {
           }
         } catch (replicationError: any) {
           // Replication 失敗不影響 Stage 創建
-          logger.error('❌ Participant Replication 啟動失敗（不影響 Stage 創建）', {
-            error: replicationError.message,
-            newStageArn: newStageArn.substring(newStageArn.length - 12),
-            suggestion: replicationError.message.includes('SDK')
-              ? '請升級 @aws-sdk/client-ivs-realtime 到最新版本'
-              : '請檢查主播是否在線',
-          });
+          const errorMessage = replicationError.message || '';
+
+          if (errorMessage.includes('not publishing')) {
+            // 主播還沒開始推流，這是正常情況
+            logger.warn('⚠️ 主播尚未開始推流，暫時跳過 Participant Replication', {
+              participantId: publisherInfo?.participantId,
+              newStageArn: newStageArn.substring(newStageArn.length - 12),
+              note: '當主播開始推流後，可以手動啟動 Replication',
+            });
+          } else if (errorMessage.includes('SDK')) {
+            logger.error('❌ Participant Replication 需要升級 SDK（不影響 Stage 創建）', {
+              error: errorMessage,
+              newStageArn: newStageArn.substring(newStageArn.length - 12),
+              solution: '請升級 @aws-sdk/client-ivs-realtime 到最新版本',
+            });
+          } else {
+            logger.error('❌ Participant Replication 啟動失敗（不影響 Stage 創建）', {
+              error: errorMessage,
+              newStageArn: newStageArn.substring(newStageArn.length - 12),
+            });
+          }
         }
       }
     } catch (error: any) {
