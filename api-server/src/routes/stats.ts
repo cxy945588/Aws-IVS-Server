@@ -17,6 +17,7 @@ import {
 import { RedisService } from '../services/RedisService';
 import { logger } from '../utils/logger';
 import { HTTP_STATUS, ERROR_CODES } from '../utils/constants';
+import { sendSuccess, sendError, sendInternalError } from '../utils/responseHelper';
 
 const router = Router();
 
@@ -89,18 +90,12 @@ router.get('/', async (req: Request, res: Response) => {
     // 修復: 即時計算總觀眾數（各 Stage 總和）
     const totalViewers = validStages.reduce((sum, stage) => sum + stage.viewerCount, 0);
 
-    const stats = {
-      success: true,
-      data: {
-        totalViewers,        // ✅ 即時計算的總和
-        activeStages: validStages.length,
-        isPublisherLive,
-        stages: validStages,
-        timestamp: new Date().toISOString(),
-      },
-    };
-
-    res.status(HTTP_STATUS.OK).json(stats);
+    sendSuccess(res, {
+      totalViewers,        // ✅ 即時計算的總和
+      activeStages: validStages.length,
+      isPublisherLive,
+      stages: validStages,
+    });
 
     logger.debug('統計資料已返回', { 
       totalViewers, 
@@ -108,15 +103,11 @@ router.get('/', async (req: Request, res: Response) => {
       calculatedFrom: 'real-time sum',
     });
   } catch (error: any) {
-    logger.error('獲取統計資料失敗', { 
+    logger.error('獲取統計資料失敗', {
       error: error.message,
       stack: error.stack,
     });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取統計資料失敗',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendInternalError(res, error, '獲取統計資料失敗');
   }
 });
 
@@ -144,20 +135,13 @@ router.get('/viewers', async (req: Request, res: Response) => {
       }
     }
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        totalViewers,
-        calculatedFrom: 'real-time sum',
-        timestamp: new Date().toISOString(),
-      },
+    sendSuccess(res, {
+      totalViewers,
+      calculatedFrom: 'real-time sum',
     });
   } catch (error: any) {
     logger.error('獲取觀眾數失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取觀眾數失敗',
-    });
+    sendInternalError(res, error, '獲取觀眾數失敗');
   }
 });
 
@@ -179,14 +163,10 @@ router.get('/stages', async (req: Request, res: Response) => {
       const viewerCount = await redis.getStageViewerCount(arn);
       const stageInfo = await redis.getStageInfo(arn);
 
-      return res.status(HTTP_STATUS.OK).json({
-        success: true,
-        data: {
-          stageArn: arn,
-          viewerCount,
-          info: stageInfo,
-          timestamp: new Date().toISOString(),
-        },
+      return sendSuccess(res, {
+        stageArn: arn,
+        viewerCount,
+        stageInfo,
       });
     }
     
@@ -215,20 +195,13 @@ router.get('/stages', async (req: Request, res: Response) => {
 
     const validStages = stagesDetails.filter(s => s !== null);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        totalStages: validStages.length,
-        stages: validStages,
-        timestamp: new Date().toISOString(),
-      },
+    sendSuccess(res, {
+      totalStages: validStages.length,
+      stages: validStages,
     });
   } catch (error: any) {
     logger.error('獲取 Stage 資訊失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取 Stage 資訊失敗',
-    });
+    sendInternalError(res, error, '獲取 Stage 資訊失敗');
   }
 });
 
@@ -248,11 +221,13 @@ router.get('/stages/:stageId', async (req: Request, res: Response) => {
 
     // 檢查是否為短 ID（不包含 ':'）
     if (stageId.includes(':')) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: '此 API 只接受短 Stage ID。如需使用完整 ARN，請使用 GET /api/stats/stages?arn=...',
-        hint: `使用: GET /api/stats/stages?arn=${stageId}`,
-      });
+      return sendError(
+        res,
+        ERROR_CODES.VALIDATION_ERROR,
+        '此 API 只接受短 Stage ID。如需使用完整 ARN，請使用 GET /api/stats/stages?arn=...',
+        HTTP_STATUS.BAD_REQUEST,
+        { hint: `使用: GET /api/stats/stages?arn=${stageId}` }
+      );
     }
 
     // 構建完整的 ARN（假設使用環境變數中的 region 和 account）
@@ -268,22 +243,15 @@ router.get('/stages/:stageId', async (req: Request, res: Response) => {
     const viewerCount = await redis.getStageViewerCount(fullArn);
     const stageInfo = await redis.getStageInfo(fullArn);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        stageId,
-        stageArn: fullArn,
-        viewerCount,
-        info: stageInfo,
-        timestamp: new Date().toISOString(),
-      },
+    sendSuccess(res, {
+      stageId,
+      stageArn: fullArn,
+      viewerCount,
+      stageInfo,
     });
   } catch (error: any) {
     logger.error('獲取 Stage 資訊失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取 Stage 資訊失敗',
-    });
+    sendInternalError(res, error, '獲取 Stage 資訊失敗');
   }
 });
 
@@ -296,19 +264,12 @@ router.get('/publisher', async (req: Request, res: Response) => {
     const redis = RedisService.getInstance();
     const isLive = await redis.getPublisherStatus();
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        isLive,
-        timestamp: new Date().toISOString(),
-      },
+    sendSuccess(res, {
+      isPublisherLive: isLive,
     });
   } catch (error: any) {
     logger.error('獲取主播狀態失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取主播狀態失敗',
-    });
+    sendInternalError(res, error, '獲取主播狀態失敗');
   }
 });
 

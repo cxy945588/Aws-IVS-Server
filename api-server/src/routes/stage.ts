@@ -18,6 +18,14 @@ import {
 import { RedisService } from '../services/RedisService';
 import { logger } from '../utils/logger';
 import { HTTP_STATUS, ERROR_CODES, STAGE_CONFIG } from '../utils/constants';
+import {
+  sendSuccess,
+  sendError,
+  sendValidationError,
+  sendForbidden,
+  sendNotFound,
+  sendInternalError,
+} from '../utils/responseHelper';
 
 const router = Router();
 
@@ -72,24 +80,16 @@ router.get('/list', async (req: Request, res: Response) => {
     // 過濾掉 null 值
     const validStages = stagesWithCounts.filter(s => s !== null);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        stages: validStages,
-        totalStages: validStages.length,  // 修復: 添加 totalStages 欄位
-        nextToken: response.nextToken,
-        timestamp: new Date().toISOString(),
-      },
+    sendSuccess(res, {
+      stages: validStages,
+      totalStages: validStages.length,
+      nextToken: response.nextToken,
     });
 
     logger.info('✅ Stage 列表已返回', { count: validStages.length });
   } catch (error: any) {
     logger.error('❌ 獲取 Stage 列表失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取 Stage 列表失敗',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendInternalError(res, error, '獲取 Stage 列表失敗');
   }
 });
 
@@ -104,10 +104,7 @@ router.get('/master/info', async (req: Request, res: Response) => {
     const masterStageArn = process.env.MASTER_STAGE_ARN;
 
     if (!masterStageArn) {
-      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-        error: ERROR_CODES.INTERNAL_ERROR,
-        message: '未配置主 Stage ARN',
-      });
+      return sendInternalError(res, null, '未配置主 Stage ARN');
     }
 
     const command = new GetStageCommand({
@@ -120,24 +117,16 @@ router.get('/master/info', async (req: Request, res: Response) => {
     const redis = RedisService.getInstance();
     const viewerCount = await redis.getStageViewerCount(masterStageArn);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        stage: response.stage,
-        viewerCount,
-        isMaster: true,
-        timestamp: new Date().toISOString(),
-      },
+    sendSuccess(res, {
+      stage: response.stage,
+      viewerCount,
+      isMasterStage: true,
     });
 
     logger.info('✅ 主 Stage 資訊已返回');
   } catch (error: any) {
     logger.error('❌ 獲取主 Stage 失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取主 Stage 失敗',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendInternalError(res, error, '獲取主 Stage 失敗');
   }
 });
 
@@ -150,10 +139,7 @@ router.post('/', async (req: Request, res: Response) => {
     const { name, tags } = req.body;
 
     if (!name) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: '缺少 name 參數',
-      });
+      return sendValidationError(res, '缺少 name 參數', ['name']);
     }
 
     // 檢查 Stage 數量限制
@@ -161,10 +147,12 @@ router.post('/', async (req: Request, res: Response) => {
     const activeStages = await redis.getActiveStages();
 
     if (activeStages.length >= STAGE_CONFIG.MAX_STAGES) {
-      return res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
-        error: ERROR_CODES.STAGE_LIMIT_REACHED,
-        message: `已達到 Stage 數量上限 (${STAGE_CONFIG.MAX_STAGES})`,
-      });
+      return sendError(
+        res,
+        ERROR_CODES.STAGE_LIMIT_REACHED,
+        `已達到 Stage 數量上限 (${STAGE_CONFIG.MAX_STAGES})`,
+        HTTP_STATUS.SERVICE_UNAVAILABLE
+      );
     }
 
     const command = new CreateStageCommand({
@@ -189,13 +177,13 @@ router.post('/', async (req: Request, res: Response) => {
       managedBy: 'api-server',
     });
 
-    res.status(HTTP_STATUS.CREATED).json({
-      success: true,
-      data: {
+    sendSuccess(
+      res,
+      {
         stage: response.stage,
-        timestamp: new Date().toISOString(),
       },
-    });
+      HTTP_STATUS.CREATED
+    );
 
     logger.info('✅ Stage 創建成功', {
       name,
@@ -203,11 +191,7 @@ router.post('/', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('❌ Stage 創建失敗', { error: error.message });
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: 'Stage 創建失敗',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendInternalError(res, error, 'Stage 創建失敗');
   }
 });
 
@@ -231,13 +215,9 @@ router.get('/:stageArn', async (req: Request, res: Response) => {
     const redis = RedisService.getInstance();
     const viewerCount = await redis.getStageViewerCount(stageArn);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        stage: response.stage,
-        viewerCount,
-        timestamp: new Date().toISOString(),
-      },
+    sendSuccess(res, {
+      stage: response.stage,
+      viewerCount,
     });
 
     logger.info('Stage 資訊已返回', { stageArn });
@@ -245,17 +225,10 @@ router.get('/:stageArn', async (req: Request, res: Response) => {
     logger.error('獲取 Stage 失敗', { error: error.message });
 
     if (error.name === 'ResourceNotFoundException') {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({
-        error: ERROR_CODES.NOT_FOUND,
-        message: 'Stage 不存在',
-      });
+      return sendNotFound(res, 'Stage');
     }
 
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: '獲取 Stage 失敗',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendInternalError(res, error, '獲取 Stage 失敗');
   }
 });
 
@@ -275,12 +248,8 @@ router.put('/:stageArn', async (req: Request, res: Response) => {
 
     const response = await getIVSClient().send(command);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        stage: response.stage,
-        timestamp: new Date().toISOString(),
-      },
+    sendSuccess(res, {
+      stage: response.stage,
     });
 
     logger.info('Stage 更新成功', { stageArn });
@@ -288,17 +257,10 @@ router.put('/:stageArn', async (req: Request, res: Response) => {
     logger.error('Stage 更新失敗', { error: error.message });
 
     if (error.name === 'ResourceNotFoundException') {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({
-        error: ERROR_CODES.NOT_FOUND,
-        message: 'Stage 不存在',
-      });
+      return sendNotFound(res, 'Stage');
     }
 
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: 'Stage 更新失敗',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendInternalError(res, error, 'Stage 更新失敗');
   }
 });
 
@@ -312,10 +274,7 @@ router.delete('/:stageArn', async (req: Request, res: Response) => {
 
     // 不允許刪除主 Stage
     if (stageArn === process.env.MASTER_STAGE_ARN) {
-      return res.status(HTTP_STATUS.FORBIDDEN).json({
-        error: ERROR_CODES.FORBIDDEN,
-        message: '無法刪除主 Stage',
-      });
+      return sendForbidden(res, '無法刪除主 Stage');
     }
 
     // 檢查是否有觀眾
@@ -323,11 +282,13 @@ router.delete('/:stageArn', async (req: Request, res: Response) => {
     const viewerCount = await redis.getStageViewerCount(stageArn);
 
     if (viewerCount > 0) {
-      return res.status(HTTP_STATUS.BAD_REQUEST).json({
-        error: ERROR_CODES.VALIDATION_ERROR,
-        message: 'Stage 中仍有觀眾，無法刪除',
-        data: { viewerCount },
-      });
+      return sendError(
+        res,
+        ERROR_CODES.VALIDATION_ERROR,
+        'Stage 中仍有觀眾，無法刪除',
+        HTTP_STATUS.BAD_REQUEST,
+        { viewerCount }
+      );
     }
 
     const command = new DeleteStageCommand({
@@ -340,28 +301,20 @@ router.delete('/:stageArn', async (req: Request, res: Response) => {
     await redis.del(`stage:${stageArn}`);
     await redis.del(`viewers:${stageArn}`);
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      message: 'Stage 已刪除',
-      timestamp: new Date().toISOString(),
-    });
+    sendSuccess(res, {
+      stageArn,
+      deleted: true,
+    }, HTTP_STATUS.OK, 'Stage 已刪除');
 
     logger.info('✅ Stage 刪除成功', { stageArn });
   } catch (error: any) {
     logger.error('❌ Stage 刪除失敗', { error: error.message });
 
     if (error.name === 'ResourceNotFoundException') {
-      return res.status(HTTP_STATUS.NOT_FOUND).json({
-        error: ERROR_CODES.NOT_FOUND,
-        message: 'Stage 不存在',
-      });
+      return sendNotFound(res, 'Stage');
     }
 
-    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
-      error: ERROR_CODES.INTERNAL_ERROR,
-      message: 'Stage 刪除失敗',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    sendInternalError(res, error, 'Stage 刪除失敗');
   }
 });
 

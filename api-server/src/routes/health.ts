@@ -5,6 +5,8 @@
 import { Router, Request, Response } from 'express';
 import { RedisService } from '../services/RedisService';
 import { logger } from '../utils/logger';
+import { sendSuccess } from '../utils/responseHelper';
+import { HTTP_STATUS } from '../utils/constants';
 
 const router = Router();
 
@@ -22,9 +24,8 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     // 獲取系統資訊
-    const health = {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
+    sendSuccess(res, {
+      status: 'healthy',
       uptime: process.uptime(),
       environment: process.env.NODE_ENV,
       version: '1.0.0',
@@ -40,14 +41,16 @@ router.get('/', async (req: Request, res: Response) => {
         total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
         unit: 'MB',
       },
-    };
-
-    res.json(health);
+    });
   } catch (error) {
     logger.error('健康檢查失敗', { error });
-    res.status(503).json({
-      status: 'error',
-      message: '服務不可用',
+    res.status(HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+      success: false,
+      error: {
+        code: 'SERVICE_UNAVAILABLE',
+        message: '服務不可用',
+      },
+      timestamp: new Date().toISOString(),
     });
   }
 });

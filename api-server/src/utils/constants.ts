@@ -39,14 +39,6 @@ export const REDIS_KEYS = {
   METRICS_PREFIX: 'metrics:',
 };
 
-// DynamoDB 表名
-export const DYNAMODB_TABLES = {
-  USERS: process.env.DYNAMODB_USERS_TABLE || 'ivs-production-users',
-  STAGES: process.env.DYNAMODB_STAGES_TABLE || 'ivs-production-stages',
-  SESSIONS: process.env.DYNAMODB_SESSIONS_TABLE || 'ivs-production-sessions',
-  TOKENS: process.env.DYNAMODB_TOKENS_TABLE || 'ivs-production-tokens',
-};
-
 // API 端點
 export const API_ENDPOINTS = {
   WHIP: 'https://global.whip.live-video.net',
@@ -106,7 +98,6 @@ export default {
   TOKEN_CONFIG,
   STAGE_CONFIG,
   REDIS_KEYS,
-  DYNAMODB_TABLES,
   API_ENDPOINTS,
   ERROR_CODES,
   HTTP_STATUS,
