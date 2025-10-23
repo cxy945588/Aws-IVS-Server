@@ -11,9 +11,45 @@
  * 7. 清理測試資源
  */
 
-const axios = require('axios');
-
+// 使用 Node.js 內置的 fetch API (Node 18+)
+// 如果是 Node 18 以下版本，請運行: npm install axios
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
+
+// HTTP 請求封裝函數
+async function request(url, options = {}) {
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+    const data = await response.json();
+    return { data, status: response.status, ok: response.ok };
+  } catch (error) {
+    throw new Error(`Request failed: ${error.message}`);
+  }
+}
+
+const axios = {
+  async get(url) {
+    return await request(url, { method: 'GET' });
+  },
+  async post(url, body) {
+    return await request(url, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+  async delete(url, config = {}) {
+    return await request(url, {
+      method: 'DELETE',
+      body: config.data ? JSON.stringify(config.data) : undefined,
+    });
+  },
+};
 
 // 顏色輸出
 const colors = {
