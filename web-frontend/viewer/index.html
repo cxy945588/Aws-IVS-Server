@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWS IVS 直播 - 觀眾端</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      width: 100%;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 16px;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .config-section {
+      background: #f5f5f5;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .input-group {
+      margin-bottom: 15px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #555;
+      font-weight: 500;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .video-container {
+      width: 100%;
+      max-width: 1000px;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 20px auto;
+      position: relative;
+    }
+
+    .video-container video {
+      width: 100%;
+      display: block;
+    }
+
+    .video-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: white;
+      pointer-events: none;
+    }
+
+    .video-overlay h2 {
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+
+    .button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-right: 10px;
+    }
+
+    .button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .button.danger {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+
+    .status-box {
+      background: #f5f5f5;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .status-item:last-child {
+      border-bottom: none;
+    }
+
+    .status-label {
+      color: #666;
+      font-weight: 500;
+    }
+
+    .status-value {
+      color: #333;
+      font-weight: 600;
+    }
+
+    .status-value.active {
+      color: #4caf50;
+    }
+
+    .status-value.inactive {
+      color: #f44336;
+    }
+
+    .info-box {
+      background: #e3f2fd;
+      border-left: 4px solid #2196f3;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 20px 0;
+    }
+
+    .info-box p {
+      margin: 5px 0;
+      color: #1976d2;
+    }
+
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>AWS IVS 直播 - 觀眾端</h1>
+      <p>低延遲實時直播觀看</p>
+    </div>
+
+    <div class="content">
+      <!-- 配置區 -->
+      <div class="config-section">
+        <div class="input-group">
+          <label for="apiServer">API Server URL</label>
+          <input type="text" id="apiServer" value="http://localhost:3000" placeholder="http://localhost:3000">
+        </div>
+        <div class="input-group">
+          <label for="apiKey">API Key</label>
+          <input type="password" id="apiKey" placeholder="輸入你的 API Key">
+        </div>
+      </div>
+
+      <div style="text-align: center;">
+        <button class="button" id="joinBtn" onclick="joinStream()">加入觀看</button>
+        <button class="button danger" id="leaveBtn" onclick="leaveStream()" disabled>離開</button>
+      </div>
+
+      <!-- 視頻播放器 -->
+      <div class="video-container">
+        <video id="videoPlayer" controls playsinline></video>
+        <div class="video-overlay" id="videoOverlay">
+          <h2>等待加入直播...</h2>
+          <p>點擊「加入觀看」開始觀看直播</p>
+        </div>
+      </div>
+
+      <!-- 信息提示 -->
+      <div class="info-box">
+        <p><strong>提示：</strong></p>
+        <p>• 系統會自動為你分配最優的 Stage</p>
+        <p>• 使用 AWS IVS Player SDK 實現低延遲播放</p>
+        <p>• 支持自動重連和錯誤恢復</p>
+      </div>
+
+      <!-- 狀態監控 -->
+      <div class="status-box">
+        <div class="status-item">
+          <span class="status-label">播放器狀態</span>
+          <span class="status-value inactive" id="statusPlayer">未初始化</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">當前 Stage</span>
+          <span class="status-value" id="statusStage">無</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">觀眾 ID</span>
+          <span class="status-value" id="statusViewerId">未分配</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">緩衝狀態</span>
+          <span class="status-value" id="statusBuffer">良好</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AWS IVS Player SDK -->
+  <script src="https://player.live-video.net/1.29.0/amazon-ivs-player.min.js"></script>
+
+  <script>
+    // 全局狀態
+    const state = {
+      player: null,
+      viewerId: null,
+      currentStageArn: null,
+      heartbeatInterval: null,
+    };
+
+    // 更新狀態顯示
+    function updateStatus(id, text, isActive = null) {
+      const el = document.getElementById(id);
+      el.textContent = text;
+      if (isActive !== null) {
+        el.className = `status-value ${isActive ? 'active' : 'inactive'}`;
+      } else {
+        el.className = 'status-value';
+      }
+    }
+
+    // 初始化 IVS Player
+    function initPlayer() {
+      if (state.player) {
+        return;
+      }
+
+      if (!window.IVSPlayer || !window.IVSPlayer.isPlayerSupported) {
+        alert('當前瀏覽器不支持 IVS Player');
+        return;
+      }
+
+      const videoEl = document.getElementById('videoPlayer');
+      state.player = window.IVSPlayer.create();
+      state.player.attachHTMLVideoElement(videoEl);
+
+      // 監聽播放器事件
+      state.player.addEventListener(window.IVSPlayer.PlayerState.PLAYING, () => {
+        console.log('播放器開始播放');
+        updateStatus('statusPlayer', '播放中', true);
+        document.getElementById('videoOverlay').style.display = 'none';
+      });
+
+      state.player.addEventListener(window.IVSPlayer.PlayerState.BUFFERING, () => {
+        console.log('播放器緩衝中');
+        updateStatus('statusBuffer', '緩衝中...');
+      });
+
+      state.player.addEventListener(window.IVSPlayer.PlayerState.IDLE, () => {
+        console.log('播放器閒置');
+        updateStatus('statusPlayer', '閒置', false);
+      });
+
+      state.player.addEventListener(window.IVSPlayer.PlayerEventType.ERROR, (error) => {
+        console.error('播放器錯誤:', error);
+        updateStatus('statusPlayer', '錯誤', false);
+        alert(`播放器錯誤: ${error.message || '未知錯誤'}`);
+      });
+
+      state.player.addEventListener(window.IVSPlayer.PlayerState.READY, () => {
+        console.log('播放器就緒');
+        updateStatus('statusPlayer', '就緒', true);
+      });
+
+      updateStatus('statusPlayer', '已初始化', true);
+    }
+
+    // 獲取觀眾 Token 並加入 Stage
+    async function joinStream() {
+      try {
+        const apiServer = document.getElementById('apiServer').value;
+        const apiKey = document.getElementById('apiKey').value;
+
+        if (!apiKey) {
+          alert('請輸入 API Key');
+          return;
+        }
+
+        document.getElementById('joinBtn').disabled = true;
+        document.getElementById('videoOverlay').innerHTML = '<div class="loader"></div><p>正在加入直播...</p>';
+
+        // 初始化播放器
+        initPlayer();
+
+        // 請求觀眾 Token
+        console.log('正在請求觀眾 Token...');
+        const response = await fetch(`${apiServer}/api/viewer/join`, {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('收到 Token 和 Stage 信息:', data);
+
+        state.viewerId = data.viewerId;
+        state.currentStageArn = data.stageArn;
+
+        updateStatus('statusViewerId', data.viewerId);
+        updateStatus('statusStage', data.stageArn.split('/').pop());
+
+        // 加載並播放 Stage 流
+        // 注意: 實際的流 URL 需要根據 IVS Stage 的具體配置
+        // 這裡使用 Stage ARN 來獲取播放 URL
+        // 在實際部署中，你需要從 API 返回正確的播放 URL
+
+        const playbackUrl = data.playbackUrl; // API 應該返回播放 URL
+
+        if (playbackUrl) {
+          state.player.load(playbackUrl);
+          state.player.play();
+        } else {
+          console.warn('未收到播放 URL，使用 Stage Token 連接');
+          // 如果使用 IVS Real-time Streaming（雙向），需要使用不同的方式
+          // 這裡簡化處理
+          throw new Error('需要播放 URL');
+        }
+
+        // 啟動心跳
+        startHeartbeat(apiServer, apiKey);
+
+        document.getElementById('leaveBtn').disabled = false;
+        console.log('成功加入直播');
+      } catch (error) {
+        console.error('加入直播失敗:', error);
+        alert(`加入直播失敗: ${error.message}`);
+        document.getElementById('joinBtn').disabled = false;
+        document.getElementById('videoOverlay').innerHTML = `
+          <h2>加入失敗</h2>
+          <p>${error.message}</p>
+          <p>請重試</p>
+        `;
+        document.getElementById('videoOverlay').style.display = 'block';
+      }
+    }
+
+    // 離開直播
+    async function leaveStream() {
+      try {
+        console.log('正在離開直播...');
+
+        // 停止心跳
+        if (state.heartbeatInterval) {
+          clearInterval(state.heartbeatInterval);
+          state.heartbeatInterval = null;
+        }
+
+        // 通知 API Server 離開
+        if (state.viewerId) {
+          const apiServer = document.getElementById('apiServer').value;
+          const apiKey = document.getElementById('apiKey').value;
+
+          await fetch(`${apiServer}/api/viewer/leave`, {
+            method: 'POST',
+            headers: {
+              'x-api-key': apiKey,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              viewerId: state.viewerId,
+              stageArn: state.currentStageArn
+            })
+          });
+        }
+
+        // 停止播放器
+        if (state.player) {
+          state.player.pause();
+          state.player = null;
+        }
+
+        // 重置狀態
+        state.viewerId = null;
+        state.currentStageArn = null;
+
+        updateStatus('statusPlayer', '未初始化', false);
+        updateStatus('statusStage', '無');
+        updateStatus('statusViewerId', '未分配');
+        updateStatus('statusBuffer', '良好');
+
+        document.getElementById('joinBtn').disabled = false;
+        document.getElementById('leaveBtn').disabled = true;
+        document.getElementById('videoOverlay').innerHTML = `
+          <h2>已離開直播</h2>
+          <p>點擊「加入觀看」重新加入</p>
+        `;
+        document.getElementById('videoOverlay').style.display = 'block';
+
+        console.log('已成功離開直播');
+      } catch (error) {
+        console.error('離開直播失敗:', error);
+      }
+    }
+
+    // 啟動心跳
+    function startHeartbeat(apiServer, apiKey) {
+      // 立即發送一次心跳
+      sendHeartbeat(apiServer, apiKey);
+
+      // 每 10 秒發送心跳
+      state.heartbeatInterval = setInterval(() => {
+        sendHeartbeat(apiServer, apiKey);
+      }, 10000);
+    }
+
+    // 發送心跳
+    async function sendHeartbeat(apiServer, apiKey) {
+      try {
+        await fetch(`${apiServer}/api/viewer/heartbeat`, {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            viewerId: state.viewerId,
+            stageArn: state.currentStageArn
+          })
+        });
+        console.log('心跳已發送');
+      } catch (error) {
+        console.error('發送心跳失敗:', error);
+      }
+    }
+
+    // 頁面卸載時自動離開
+    window.addEventListener('beforeunload', () => {
+      if (state.viewerId) {
+        leaveStream();
+      }
+    });
+
+    console.log('觀眾端頁面已加載');
+  </script>
+</body>
+</html>

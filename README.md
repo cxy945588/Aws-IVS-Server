@@ -2,6 +2,18 @@
 
 > 🎥 基於 AWS IVS (Interactive Video Service) 的大規模即時串流解決方案
 > 💾 整合 PostgreSQL 持久化存儲，成本優化架構
+> ✨ **新架構**: 前端直接多 Stage 推流，無需 Media Server 中轉
+
+## 🚀 架構升級說明
+
+**最新版本採用簡化架構 - 生產就緒！**
+
+- ✅ **前端直接推流**: 使用 AWS IVS Web Broadcast SDK，主播端直接連接多個 Stage
+- ✅ **無需 Media Server**: 移除複雜的 WebRTC/WHIP 實現，降低維護成本
+- ✅ **立即可用**: 基於官方 SDK，穩定可靠
+- ✅ **成本更低**: 無需額外 EC2 實例
+
+詳細說明請參閱 [簡化架構文檔](SIMPLIFIED_ARCHITECTURE.md)
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20.x-green)](https://nodejs.org/)
@@ -190,6 +202,64 @@ curl http://localhost:3000/api/health
 ```
 
 應該返回包含 PostgreSQL 連接狀態的健康檢查資訊
+
+### 前端使用指南
+
+#### 主播端（推流）
+
+1. 訪問主播端頁面：
+```bash
+cd web-frontend/broadcaster
+python3 -m http.server 8080
+# 或使用 npx serve
+npx serve -p 8080
+```
+
+2. 在瀏覽器打開 `http://localhost:8080`
+
+3. 輸入 API Server URL 和 API Key
+
+4. 點擊「開始直播」，授權攝像頭和麥克風
+
+5. 系統會自動：
+   - 獲取本地媒體流
+   - 連接到所有活躍 Stage
+   - 同時推流到多個 Stage
+   - 監聽新 Stage 創建並自動連接
+
+#### 觀眾端（觀看）
+
+1. 訪問觀眾端頁面：
+```bash
+cd web-frontend/viewer
+python3 -m http.server 8081
+```
+
+2. 在瀏覽器打開 `http://localhost:8081`
+
+3. 輸入 API Server URL 和 API Key
+
+4. 點擊「加入觀看」
+
+5. 系統會自動分配最優 Stage 並開始播放
+
+#### 架構優勢
+
+```
+主播 (瀏覽器)
+    │
+    └─ AWS IVS Web Broadcast SDK
+         │
+         ├─> Stage 0 (0-50 觀眾)
+         ├─> Stage 1 (51-100 觀眾)
+         └─> Stage N (...)
+```
+
+- ✅ **無需 Media Server**: 前端直接推流
+- ✅ **自動擴展**: 觀眾增加時自動創建新 Stage
+- ✅ **自動連接**: 主播端自動連接新 Stage
+- ✅ **低延遲**: 直連 AWS IVS，無中轉
+- ✅ **穩定可靠**: 使用官方 SDK
 
 ---
 

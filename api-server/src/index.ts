@@ -23,6 +23,7 @@ import statsRoutes from './routes/stats';
 import stageRoutes from './routes/stage';
 import healthRoutes from './routes/health';
 import viewerRoutes from './routes/viewer';
+import broadcasterRoutes from './routes/broadcaster';
 
 // 中間件
 import { errorHandler } from './middleware/errorHandler';
@@ -86,6 +87,7 @@ app.use('/api/token', apiKeyAuth, tokenRoutes);
 app.use('/api/stats', apiKeyAuth, statsRoutes);
 app.use('/api/stage', apiKeyAuth, stageRoutes);
 app.use('/api/viewer', apiKeyAuth, viewerRoutes);
+app.use('/api/broadcaster', apiKeyAuth, broadcasterRoutes);
 
 // 根路徑
 app.get('/', (req, res) => {
@@ -100,6 +102,7 @@ app.get('/', (req, res) => {
       viewerToken: '/api/token/viewer',
       stats: '/api/stats',
       stages: '/api/stage',
+      broadcaster: '/api/broadcaster',
     },
   });
 });
@@ -127,13 +130,22 @@ const wss = new WebSocketServer({
 });
 
 wss.on('connection', (ws, req) => {
-  logger.info('WebSocket 客戶端已連接', { ip: req.socket.remoteAddress });
+  // 識別客戶端類型
+  const url = new URL(req.url || '', `http://${req.headers.host}`);
+  const clientType = url.searchParams.get('type');
+
+  if (clientType === 'broadcaster') {
+    (ws as any).isBroadcaster = true;
+    logger.info('📡 主播端 WebSocket 已連接', { ip: req.socket.remoteAddress });
+  } else {
+    logger.info('WebSocket 客戶端已連接', { ip: req.socket.remoteAddress });
+  }
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message.toString());
       logger.debug('收到 WebSocket 訊息', { data });
-      
+
       // 處理訂閱請求
       if (data.type === 'subscribe') {
         ws.send(JSON.stringify({
@@ -148,7 +160,11 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    logger.info('WebSocket 客戶端已斷開連接');
+    if ((ws as any).isBroadcaster) {
+      logger.info('📡 主播端 WebSocket 已斷開連接');
+    } else {
+      logger.info('WebSocket 客戶端已斷開連接');
+    }
   });
 
   ws.on('error', (error) => {
@@ -302,5 +318,49 @@ async function gracefulShutdown() {
 
 // 啟動
 startServer();
+
+// ==========================================
+// WebSocket 通知函數 (供其他模組使用)
+// ==========================================
+
+/**
+ * 通知主播端 Stage 已創建
+ */
+export function notifyBroadcasterStageCreated(stageArn: string): void {
+  wss.clients.forEach((client) => {
+    if ((client as any).isBroadcaster && client.readyState === 1) {
+      client.send(JSON.stringify({
+        type: 'stage_created',
+        data: {
+          stageArn,
+          timestamp: new Date().toISOString(),
+        },
+      }));
+      logger.info('📤 已通知主播端: Stage 已創建', {
+        stageId: stageArn.split('/').pop(),
+      });
+    }
+  });
+}
+
+/**
+ * 通知主播端 Stage 已刪除
+ */
+export function notifyBroadcasterStageDeleted(stageArn: string): void {
+  wss.clients.forEach((client) => {
+    if ((client as any).isBroadcaster && client.readyState === 1) {
+      client.send(JSON.stringify({
+        type: 'stage_deleted',
+        data: {
+          stageArn,
+          timestamp: new Date().toISOString(),
+        },
+      }));
+      logger.info('📤 已通知主播端: Stage 已刪除', {
+        stageId: stageArn.split('/').pop(),
+      });
+    }
+  });
+}
 
 export { app, httpServer, wss };

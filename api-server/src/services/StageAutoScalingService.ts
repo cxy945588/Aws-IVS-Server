@@ -231,6 +231,14 @@ export class StageAutoScalingService {
           newTotalCapacity: (stages.length + 1) * 50,
           totalStages: stages.length + 1,
         });
+
+        // 通知主播端新 Stage 已創建
+        try {
+          const { notifyBroadcasterStageCreated } = await import('../index');
+          notifyBroadcasterStageCreated(response.stage.arn);
+        } catch (error: any) {
+          logger.error('通知主播端失敗', { error: error.message });
+        }
       }
     } catch (error: any) {
       logger.error('❌ 自動擴展失敗', { error: error.message, stack: error.stack });
@@ -296,6 +304,14 @@ export class StageAutoScalingService {
         viewerCount: currentViewerCount,
         ageMinutes: Math.round(ageInMinutes),
       });
+
+      // 通知主播端 Stage 已刪除
+      try {
+        const { notifyBroadcasterStageDeleted } = await import('../index');
+        notifyBroadcasterStageDeleted(stageArn);
+      } catch (error: any) {
+        logger.error('通知主播端失敗', { error: error.message });
+      }
     } catch (error: any) {
       logger.error('❌ 自動縮減失敗', { 
         error: error.message,
