@@ -322,10 +322,10 @@ export class StageAutoScalingService {
 
   /**
    * 列出所有 Stage
-   * 
+   *
    * 修復: 過濾掉 arn 為 undefined 的 Stage，確保類型安全
    */
-  private async listAllStages(): Promise<Array<{ arn: string; name?: string }>> {
+  public async listAllStages(): Promise<Array<{ arn: string; name?: string }>> {
     try {
       const command = new ListStagesCommand({ maxResults: 50 });
       const response = await this.client.send(command);

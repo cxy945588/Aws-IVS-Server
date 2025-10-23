@@ -4,12 +4,21 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { TokenService } from '../services/TokenService';
-import { StageManager } from '../utils/StageManager';
+import { IVSService } from '../services/IVSService';
+import { StageAutoScalingService } from '../services/StageAutoScalingService';
+import { ParticipantTokenCapability } from '@aws-sdk/client-ivs-realtime';
 import { logger } from '../utils/logger';
 
 const router = Router();
-const tokenService = new TokenService();
+let ivsService: IVSService;
+
+// 延遲初始化 IVS Service
+const getIVSService = () => {
+  if (!ivsService) {
+    ivsService = new IVSService();
+  }
+  return ivsService;
+};
 
 /**
  * 獲取所有活躍 Stage 及其 PUBLISH tokens
@@ -17,21 +26,27 @@ const tokenService = new TokenService();
  */
 router.get('/stages', async (req: Request, res: Response) => {
   try {
-    const stages = await StageManager.getInstance().listStages();
+    const autoScaling = StageAutoScalingService.getInstance();
+    const ivs = getIVSService();
 
+    // 獲取所有 Stage
+    const stages = await autoScaling.listAllStages();
+
+    // 為每個 Stage 生成 PUBLISH token
     const stagesWithTokens = await Promise.all(
       stages.map(async (stage) => {
-        const token = await tokenService.generateToken({
+        const tokenResult = await ivs.createParticipantToken({
           stageArn: stage.arn,
-          capability: 'PUBLISH',
+          userId: 'broadcaster',
+          capabilities: [ParticipantTokenCapability.PUBLISH],
           duration: 7200, // 2 小時
         });
 
         return {
           stageArn: stage.arn,
           stageId: stage.arn.split('/').pop(),
-          token: token,
-          viewerCount: stage.activeParticipants || 0,
+          token: tokenResult.token,
+          viewerCount: 0, // 可以從 Redis 獲取實際觀眾數
         };
       })
     );
@@ -67,9 +82,11 @@ router.post('/stage-token', async (req: Request, res: Response) => {
       return res.status(400).json({ error: '缺少 stageArn 參數' });
     }
 
-    const token = await tokenService.generateToken({
+    const ivs = getIVSService();
+    const tokenResult = await ivs.createParticipantToken({
       stageArn: stageArn,
-      capability: 'PUBLISH',
+      userId: 'broadcaster',
+      capabilities: [ParticipantTokenCapability.PUBLISH],
       duration: 7200, // 2 小時
     });
 
@@ -78,7 +95,7 @@ router.post('/stage-token', async (req: Request, res: Response) => {
     });
 
     res.json({
-      token,
+      token: tokenResult.token,
       stageArn,
       expiresIn: 7200,
       timestamp: new Date().toISOString(),
