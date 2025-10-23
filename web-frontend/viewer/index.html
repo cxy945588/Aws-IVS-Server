@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWS IVS 直播 - 觀眾端</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      width: 100%;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .section {
+      margin-bottom: 30px;
+    }
+
+    .section h2 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .input-group {
+      margin-bottom: 15px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #555;
+      font-weight: 500;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-right: 10px;
+    }
+
+    .button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .button:active {
+      transform: translateY(0);
+    }
+
+    .button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .button.danger {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+
+    .video-container {
+      position: relative;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      aspect-ratio: 16/9;
+      margin-bottom: 20px;
+    }
+
+    #remoteVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .live-badge {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(255, 71, 87, 0.9);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 25px;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.85; }
+    }
+
+    .viewer-count {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 25px;
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 18px;
+    }
+
+    .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top: 4px solid white;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .info-box {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      color: #666;
+      font-weight: 500;
+    }
+
+    .info-value {
+      color: #333;
+      font-weight: 600;
+    }
+
+    .log-container {
+      background: #1e1e1e;
+      color: #00ff00;
+      padding: 15px;
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .log-entry {
+      margin-bottom: 5px;
+    }
+
+    .log-entry.error {
+      color: #ff4757;
+    }
+
+    .log-entry.success {
+      color: #00d084;
+    }
+
+    .log-entry.info {
+      color: #00ff00;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📺 AWS IVS 直播觀眾端</h1>
+      <p>自動分配到最佳 Stage - 流暢觀看體驗</p>
+    </div>
+
+    <div class="content">
+      <!-- 配置区 -->
+      <div class="section">
+        <h2>⚙️ 配置</h2>
+        <div class="input-group">
+          <label for="apiServer">API Server URL</label>
+          <input type="text" id="apiServer" value="http://localhost:3000" placeholder="http://localhost:3000">
+        </div>
+        <div class="input-group">
+          <label for="apiKey">API Key</label>
+          <input type="text" id="apiKey" placeholder="your-api-key">
+        </div>
+        <div class="input-group">
+          <label for="userId">觀眾 ID</label>
+          <input type="text" id="userId" placeholder="自動生成" readonly>
+        </div>
+      </div>
+
+      <!-- 视频区 -->
+      <div class="section">
+        <h2>🎬 直播畫面</h2>
+        <div class="video-container">
+          <video id="remoteVideo" autoplay playsinline></video>
+          <div class="live-badge" id="liveBadge" style="display: none;">
+            <span>🔴</span>
+            <span>LIVE</span>
+          </div>
+          <div class="viewer-count" id="viewerCount" style="display: none;">
+            <span>👥</span>
+            <span id="viewerCountValue">0</span>
+          </div>
+          <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+            <div class="spinner"></div>
+            <div>正在連接直播間...</div>
+          </div>
+        </div>
+        <div>
+          <button class="button" id="joinButton" onclick="joinStream()">加入直播</button>
+          <button class="button danger" id="leaveButton" onclick="leaveStream()" disabled>離開直播</button>
+        </div>
+      </div>
+
+      <!-- 信息区 -->
+      <div class="section">
+        <h2>📊 直播資訊</h2>
+        <div class="info-box">
+          <div class="info-row">
+            <span class="info-label">連接狀態</span>
+            <span class="info-value" id="connectionStatus">未連接</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">分配的 Stage</span>
+            <span class="info-value" id="assignedStage">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">該 Stage 觀眾數</span>
+            <span class="info-value" id="stageViewers">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Participant ID</span>
+            <span class="info-value" id="participantId">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 日志区 -->
+      <div class="section">
+        <h2>📝 日誌</h2>
+        <div class="log-container" id="logContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 全局变量
+    let currentStage = null;
+    let viewerId = null;
+
+    // 生成随机观众 ID
+    function generateViewerId() {
+      return `viewer-${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    // 日志函数
+    function addLog(message, type = 'info') {
+      const logContainer = document.getElementById('logContainer');
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry ${type}`;
+      logEntry.textContent = `[${timestamp}] ${message}`;
+      logContainer.appendChild(logEntry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    // 更新连接状态
+    function updateConnectionStatus(status, stageId, viewerCount, participantId) {
+      document.getElementById('connectionStatus').textContent = status;
+      document.getElementById('assignedStage').textContent = stageId || '-';
+      document.getElementById('stageViewers').textContent = viewerCount || '-';
+      document.getElementById('participantId').textContent = participantId || '-';
+
+      if (viewerCount) {
+        document.getElementById('viewerCountValue').textContent = viewerCount;
+        document.getElementById('viewerCount').style.display = 'flex';
+      }
+
+      if (status === '已連接') {
+        document.getElementById('liveBadge').style.display = 'flex';
+      } else {
+        document.getElementById('liveBadge').style.display = 'none';
+        document.getElementById('viewerCount').style.display = 'none';
+      }
+    }
+
+    // 加入直播
+    async function joinStream() {
+      try {
+        addLog('準備加入直播...', 'info');
+
+        // 获取配置
+        const apiServer = document.getElementById('apiServer').value;
+        const apiKey = document.getElementById('apiKey').value;
+
+        if (!apiKey) {
+          addLog('請輸入 API Key', 'error');
+          alert('請輸入 API Key');
+          return;
+        }
+
+        // 禁用按钮，显示加载
+        document.getElementById('joinButton').disabled = true;
+        document.getElementById('loadingOverlay').style.display = 'flex';
+
+        // 1. 请求 Viewer Token（自动分配到最优 Stage）
+        addLog('正在向 API Server 請求 Token（自動分配最佳 Stage）...', 'info');
+        const response = await fetch(`${apiServer}/api/token/viewer`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey
+          },
+          body: JSON.stringify({ userId: viewerId })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || `API 請求失敗: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error('Token 獲取失敗');
+        }
+
+        const tokenInfo = data.data;
+        const stageId = tokenInfo.stageArn.substring(tokenInfo.stageArn.length - 12);
+
+        addLog(`✅ 已分配到 Stage: ${stageId}`, 'success');
+        addLog(`   觀眾數: ${tokenInfo.currentViewers}`, 'info');
+        addLog(`   Token 有效期: ${Math.floor(tokenInfo.expiresIn / 60)} 分鐘`, 'info');
+
+        // 2. 连接到 Stage
+        addLog('正在連接到直播間...', 'info');
+        addLog('⚠️ 注意：當前為演示模式，實際需要 AWS IVS Web Broadcast SDK', 'info');
+
+        // 模拟连接（实际需要使用 AWS IVS SDK）
+        setTimeout(() => {
+          updateConnectionStatus(
+            '已連接',
+            stageId,
+            tokenInfo.currentViewers,
+            tokenInfo.participantId
+          );
+
+          document.getElementById('loadingOverlay').style.display = 'none';
+          document.getElementById('leaveButton').disabled = false;
+
+          addLog('✅ 成功連接到直播間（演示模式）', 'success');
+          addLog('', 'info');
+          addLog('生產環境實現示例:', 'info');
+          addLog('```javascript', 'info');
+          addLog('import { IVSBroadcastClient } from "amazon-ivs-web-broadcast";', 'info');
+          addLog('', 'info');
+          addLog('const stage = new IVSBroadcastClient.Stage(token, {', 'info');
+          addLog('  stageArn: stageArn', 'info');
+          addLog('});', 'info');
+          addLog('', 'info');
+          addLog('stage.on("participantJoined", (participant) => {', 'info');
+          addLog('  // 處理新參與者加入', 'info');
+          addLog('});', 'info');
+          addLog('', 'info');
+          addLog('await stage.join();', 'info');
+          addLog('```', 'info');
+        }, 1500);
+
+      } catch (error) {
+        addLog(`❌ 錯誤: ${error.message}`, 'error');
+        console.error(error);
+        document.getElementById('joinButton').disabled = false;
+        document.getElementById('loadingOverlay').style.display = 'none';
+      }
+    }
+
+    // 离开直播
+    async function leaveStream() {
+      try {
+        addLog('正在離開直播間...', 'info');
+
+        // 重置状态
+        updateConnectionStatus('未連接', null, null, null);
+        document.getElementById('joinButton').disabled = false;
+        document.getElementById('leaveButton').disabled = true;
+        currentStage = null;
+
+        addLog('✅ 已離開直播間', 'success');
+      } catch (error) {
+        addLog(`❌ 離開直播間時發生錯誤: ${error.message}`, 'error');
+      }
+    }
+
+    // 页面加载完成
+    window.addEventListener('load', () => {
+      viewerId = generateViewerId();
+      document.getElementById('userId').value = viewerId;
+
+      addLog('📺 觀眾端已就緒', 'success');
+      addLog(`觀眾 ID: ${viewerId}`, 'info');
+      addLog('請配置 API Server URL 和 API Key，然後點擊「加入直播」', 'info');
+    });
+  </script>
+</body>
+</html>

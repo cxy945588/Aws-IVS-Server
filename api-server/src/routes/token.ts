@@ -270,4 +270,117 @@ router.post('/mediaserver', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/token/publisher-all
+ * 生成所有 Stage 的主播 Token（用于多 Stage 同时推流）
+ *
+ * 这是生产就绪方案的核心 API
+ * 主播通过 Web 界面使用返回的所有 Token 同时加入所有 Stage
+ */
+router.post('/publisher-all', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        error: ERROR_CODES.VALIDATION_ERROR,
+        message: '缺少 userId',
+      });
+    }
+
+    logger.info('收到批量主播 Token 请求', { userId });
+
+    const redis = RedisService.getInstance();
+
+    // 获取所有活跃 Stage
+    let stageArns = await redis.getActiveStages();
+
+    // 如果没有 Stage，使用主 Stage
+    if (stageArns.length === 0 && process.env.MASTER_STAGE_ARN) {
+      stageArns = [process.env.MASTER_STAGE_ARN];
+      logger.info('没有活跃 Stage，使用主 Stage', {
+        masterStage: process.env.MASTER_STAGE_ARN.substring(process.env.MASTER_STAGE_ARN.length - 12),
+      });
+    }
+
+    if (stageArns.length === 0) {
+      return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+        error: ERROR_CODES.INTERNAL_ERROR,
+        message: '没有可用的 Stage',
+      });
+    }
+
+    // 为每个 Stage 生成 Token
+    const tokens = await Promise.all(
+      stageArns.map(async (stageArn) => {
+        try {
+          const token = await getIVSService().createPublisherToken(userId, stageArn);
+          return {
+            success: true,
+            stageArn: token.stageArn,
+            stageId: stageArn.substring(stageArn.length - 12),
+            token: token.token,
+            participantId: token.participantId,
+            capabilities: token.capabilities,
+            expiresAt: token.expiresAt,
+            expiresIn: Math.floor((token.expiresAt.getTime() - Date.now()) / 1000),
+          };
+        } catch (error: any) {
+          logger.error('为 Stage 生成 Token 失败', {
+            stageArn: stageArn.substring(stageArn.length - 12),
+            error: error.message,
+          });
+          return {
+            success: false,
+            stageArn,
+            stageId: stageArn.substring(stageArn.length - 12),
+            error: error.message,
+          };
+        }
+      })
+    );
+
+    // 统计成功/失败
+    const successful = tokens.filter(t => t.success);
+    const failed = tokens.filter(t => !t.success);
+
+    // 更新主播状态
+    await redis.setPublisherStatus(true);
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: {
+        userId,
+        totalStages: stageArns.length,
+        successfulTokens: successful.length,
+        failedTokens: failed.length,
+        tokens: successful,
+        failures: failed.length > 0 ? failed : undefined,
+        whipEndpoint: API_ENDPOINTS.WHIP,
+      },
+      instructions: {
+        web: {
+          sdk: 'amazon-ivs-web-broadcast',
+          usage: 'Use IVSBroadcastClient.Stage.join() for each token',
+          note: '为每个 token 创建 Stage 实例并加入，实现多 Stage 同时推流',
+        },
+      },
+    });
+
+    logger.info('✅ 批量主播 Token 生成完成', {
+      userId,
+      totalStages: stageArns.length,
+      successful: successful.length,
+      failed: failed.length,
+    });
+  } catch (error: any) {
+    logger.error('❌ 批量主播 Token 生成失败', { error: error.message });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      error: ERROR_CODES.TOKEN_GENERATION_FAILED,
+      message: 'Token 批量生成失败',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
 export default router;

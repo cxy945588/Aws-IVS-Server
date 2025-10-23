@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWS IVS 直播 - 主播端</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      width: 100%;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .section {
+      margin-bottom: 30px;
+    }
+
+    .section h2 {
+      color: #333;
+      margin-bottom: 15px;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .input-group {
+      margin-bottom: 15px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #555;
+      font-weight: 500;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      margin-right: 10px;
+    }
+
+    .button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .button:active {
+      transform: translateY(0);
+    }
+
+    .button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .button.danger {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+
+    .status-box {
+      background: #f5f5f5;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .status-item:last-child {
+      border-bottom: none;
+    }
+
+    .status-label {
+      color: #666;
+      font-weight: 500;
+    }
+
+    .status-value {
+      color: #333;
+      font-weight: 600;
+    }
+
+    .status-value.live {
+      color: #00d084;
+    }
+
+    .status-value.offline {
+      color: #ff4757;
+    }
+
+    .preview-container {
+      position: relative;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      aspect-ratio: 16/9;
+      margin-bottom: 20px;
+    }
+
+    #localVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .live-indicator {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: #ff4757;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      display: none;
+      animation: pulse 2s infinite;
+    }
+
+    .live-indicator.active {
+      display: block;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .log-container {
+      background: #1e1e1e;
+      color: #00ff00;
+      padding: 15px;
+      border-radius: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .log-entry {
+      margin-bottom: 5px;
+    }
+
+    .log-entry.error {
+      color: #ff4757;
+    }
+
+    .log-entry.success {
+      color: #00d084;
+    }
+
+    .log-entry.info {
+      color: #00ff00;
+    }
+
+    .alert {
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .alert.warning {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      color: #856404;
+    }
+
+    .alert.error {
+      background: #f8d7da;
+      border-left: 4px solid #dc3545;
+      color: #721c24;
+    }
+
+    .stage-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .stage-item {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 6px;
+      border: 2px solid #e0e0e0;
+    }
+
+    .stage-item.connected {
+      border-color: #00d084;
+      background: #e8f5e9;
+    }
+
+    .stage-id {
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .stage-status {
+      font-size: 12px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎥 AWS IVS 直播主播端</h1>
+      <p>多 Stage 同時推流 - 支持大規模觀眾</p>
+    </div>
+
+    <div class="content">
+      <!-- 配置区 -->
+      <div class="section">
+        <h2>⚙️ 配置</h2>
+        <div class="input-group">
+          <label for="apiServer">API Server URL</label>
+          <input type="text" id="apiServer" value="http://localhost:3000" placeholder="http://localhost:3000">
+        </div>
+        <div class="input-group">
+          <label for="apiKey">API Key</label>
+          <input type="text" id="apiKey" placeholder="your-api-key">
+        </div>
+        <div class="input-group">
+          <label for="userId">主播 ID</label>
+          <input type="text" id="userId" value="broadcaster-001" placeholder="broadcaster-001">
+        </div>
+      </div>
+
+      <!-- 预览区 -->
+      <div class="section">
+        <h2>📹 推流預覽</h2>
+        <div class="preview-container">
+          <video id="localVideo" autoplay muted playsinline></video>
+          <div class="live-indicator" id="liveIndicator">🔴 直播中</div>
+        </div>
+        <div>
+          <button class="button" id="startButton" onclick="startBroadcast()">開始推流</button>
+          <button class="button danger" id="stopButton" onclick="stopBroadcast()" disabled>停止推流</button>
+        </div>
+      </div>
+
+      <!-- 状态区 -->
+      <div class="section">
+        <h2>📊 狀態</h2>
+        <div class="status-box">
+          <div class="status-item">
+            <span class="status-label">推流狀態</span>
+            <span class="status-value offline" id="broadcastStatus">離線</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">連接的 Stage 數量</span>
+            <span class="status-value" id="stageCount">0</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">成功連接</span>
+            <span class="status-value" id="successCount">0</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">連接失敗</span>
+            <span class="status-value" id="failCount">0</span>
+          </div>
+        </div>
+
+        <!-- Stage 列表 -->
+        <div id="stageListContainer" style="margin-top: 20px; display: none;">
+          <h3 style="margin-bottom: 10px;">已連接的 Stage</h3>
+          <div class="stage-list" id="stageList"></div>
+        </div>
+      </div>
+
+      <!-- 日志区 -->
+      <div class="section">
+        <h2>📝 日誌</h2>
+        <div class="log-container" id="logContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 全局变量
+    let stages = [];
+    let localStream = null;
+    let isStreaming = false;
+
+    // 日志函数
+    function addLog(message, type = 'info') {
+      const logContainer = document.getElementById('logContainer');
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry ${type}`;
+      logEntry.textContent = `[${timestamp}] ${message}`;
+      logContainer.appendChild(logEntry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    // 更新状态
+    function updateStatus(status, stageCount, successCount, failCount) {
+      const statusElement = document.getElementById('broadcastStatus');
+      statusElement.textContent = status;
+      statusElement.className = `status-value ${status === '直播中' ? 'live' : 'offline'}`;
+
+      document.getElementById('stageCount').textContent = stageCount || 0;
+      document.getElementById('successCount').textContent = successCount || 0;
+      document.getElementById('failCount').textContent = failCount || 0;
+    }
+
+    // 更新 Stage 列表显示
+    function updateStageList(tokens) {
+      const stageListContainer = document.getElementById('stageListContainer');
+      const stageList = document.getElementById('stageList');
+
+      if (!tokens || tokens.length === 0) {
+        stageListContainer.style.display = 'none';
+        return;
+      }
+
+      stageListContainer.style.display = 'block';
+      stageList.innerHTML = '';
+
+      tokens.forEach(token => {
+        const stageItem = document.createElement('div');
+        stageItem.className = 'stage-item connected';
+        stageItem.innerHTML = `
+          <div class="stage-id">Stage ${token.stageId}</div>
+          <div class="stage-status">✅ 已連接</div>
+        `;
+        stageList.appendChild(stageItem);
+      });
+    }
+
+    // 开始推流
+    async function startBroadcast() {
+      try {
+        addLog('開始初始化推流...', 'info');
+
+        // 获取配置
+        const apiServer = document.getElementById('apiServer').value;
+        const apiKey = document.getElementById('apiKey').value;
+        const userId = document.getElementById('userId').value;
+
+        if (!apiKey) {
+          addLog('請輸入 API Key', 'error');
+          alert('請輸入 API Key');
+          return;
+        }
+
+        // 禁用开始按钮
+        document.getElementById('startButton').disabled = true;
+
+        // 1. 获取本地媒体流
+        addLog('請求攝像頭和麥克風權限...', 'info');
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 }
+          },
+          audio: true
+        });
+
+        // 显示本地预览
+        document.getElementById('localVideo').srcObject = localStream;
+        addLog('✅ 本地媒體流獲取成功', 'success');
+
+        // 2. 获取所有 Stage 的 Token
+        addLog('正在向 API Server 請求 Token...', 'info');
+        const response = await fetch(`${apiServer}/api/token/publisher-all`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey
+          },
+          body: JSON.stringify({ userId })
+        });
+
+        if (!response.ok) {
+          throw new Error(`API 請求失敗: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.success) {
+          throw new Error('Token 獲取失敗');
+        }
+
+        const tokens = data.data.tokens;
+        addLog(`✅ 獲取到 ${tokens.length} 個 Stage 的 Token`, 'success');
+        updateStageList(tokens);
+
+        // 3. 连接到所有 Stage
+        addLog('正在連接到所有 Stage...', 'info');
+        addLog('⚠️ 注意：當前為演示模式，實際需要 AWS IVS Web Broadcast SDK', 'info');
+        addLog(`   請在生產環境中使用官方 SDK: npm install amazon-ivs-web-broadcast`, 'info');
+
+        // 模拟连接（实际需要使用 AWS IVS SDK）
+        updateStatus('直播中', tokens.length, tokens.length, 0);
+        document.getElementById('liveIndicator').classList.add('active');
+        document.getElementById('stopButton').disabled = false;
+        isStreaming = true;
+
+        addLog('✅ 推流已開始（演示模式）', 'success');
+        addLog('', 'info');
+        addLog('生產環境實現示例:', 'info');
+        addLog('```javascript', 'info');
+        addLog('import { IVSBroadcastClient } from "amazon-ivs-web-broadcast";', 'info');
+        addLog('', 'info');
+        addLog('for (const tokenInfo of tokens) {', 'info');
+        addLog('  const stage = new IVSBroadcastClient.Stage(tokenInfo.token, {', 'info');
+        addLog('    stageArn: tokenInfo.stageArn', 'info');
+        addLog('  });', 'info');
+        addLog('  await stage.join();', 'info');
+        addLog('  // 添加媒體流...', 'info');
+        addLog('}', 'info');
+        addLog('```', 'info');
+
+      } catch (error) {
+        addLog(`❌ 錯誤: ${error.message}`, 'error');
+        console.error(error);
+        document.getElementById('startButton').disabled = false;
+      }
+    }
+
+    // 停止推流
+    async function stopBroadcast() {
+      try {
+        addLog('正在停止推流...', 'info');
+
+        // 停止本地流
+        if (localStream) {
+          localStream.getTracks().forEach(track => track.stop());
+          document.getElementById('localVideo').srcObject = null;
+          localStream = null;
+        }
+
+        // 重置状态
+        updateStatus('離線', 0, 0, 0);
+        document.getElementById('liveIndicator').classList.remove('active');
+        document.getElementById('startButton').disabled = false;
+        document.getElementById('stopButton').disabled = true;
+        document.getElementById('stageListContainer').style.display = 'none';
+        isStreaming = false;
+
+        addLog('✅ 推流已停止', 'success');
+      } catch (error) {
+        addLog(`❌ 停止推流時發生錯誤: ${error.message}`, 'error');
+      }
+    }
+
+    // 页面加载完成
+    window.addEventListener('load', () => {
+      addLog('🎥 主播端已就緒', 'success');
+      addLog('請配置 API Server URL 和 API Key，然後點擊「開始推流」', 'info');
+    });
+  </script>
+</body>
+</html>
