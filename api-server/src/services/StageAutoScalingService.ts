@@ -18,6 +18,7 @@ import {
 import { RedisService } from './RedisService';
 import { logger } from '../utils/logger';
 import { STAGE_CONFIG } from '../utils/constants';
+import { notifyMediaServerStageCreated, notifyMediaServerStageDeleted } from '../index';
 
 export class StageAutoScalingService {
   private static instance: StageAutoScalingService;
@@ -231,6 +232,13 @@ export class StageAutoScalingService {
           newTotalCapacity: (stages.length + 1) * 50,
           totalStages: stages.length + 1,
         });
+
+        // 通知 Media Server: Stage 已創建
+        try {
+          notifyMediaServerStageCreated(response.stage.arn);
+        } catch (error: any) {
+          logger.error('通知 Media Server 失敗', { error: error.message });
+        }
       }
     } catch (error: any) {
       logger.error('❌ 自動擴展失敗', { error: error.message, stack: error.stack });
@@ -296,6 +304,13 @@ export class StageAutoScalingService {
         viewerCount: currentViewerCount,
         ageMinutes: Math.round(ageInMinutes),
       });
+
+      // 通知 Media Server: Stage 已刪除
+      try {
+        notifyMediaServerStageDeleted(stageArn);
+      } catch (error: any) {
+        logger.error('通知 Media Server 失敗', { error: error.message });
+      }
     } catch (error: any) {
       logger.error('❌ 自動縮減失敗', { 
         error: error.message,

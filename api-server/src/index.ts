@@ -23,6 +23,7 @@ import statsRoutes from './routes/stats';
 import stageRoutes from './routes/stage';
 import healthRoutes from './routes/health';
 import viewerRoutes from './routes/viewer';
+import mediaRoutes from './routes/media';
 
 // 中間件
 import { errorHandler } from './middleware/errorHandler';
@@ -86,6 +87,7 @@ app.use('/api/token', apiKeyAuth, tokenRoutes);
 app.use('/api/stats', apiKeyAuth, statsRoutes);
 app.use('/api/stage', apiKeyAuth, stageRoutes);
 app.use('/api/viewer', apiKeyAuth, viewerRoutes);
+app.use('/api/media', apiKeyAuth, mediaRoutes); // Media Server 路由
 
 // 根路徑
 app.get('/', (req, res) => {
@@ -127,13 +129,22 @@ const wss = new WebSocketServer({
 });
 
 wss.on('connection', (ws, req) => {
-  logger.info('WebSocket 客戶端已連接', { ip: req.socket.remoteAddress });
+  const url = new URL(req.url!, `http://${req.headers.host}`);
+  const clientType = url.searchParams.get('type');
+
+  // 識別 Media Server 連接
+  if (clientType === 'media-server') {
+    (ws as any).isMediaServer = true;
+    logger.info('📡 Media Server WebSocket 已連接', { ip: req.socket.remoteAddress });
+  } else {
+    logger.info('WebSocket 客戶端已連接', { ip: req.socket.remoteAddress });
+  }
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message.toString());
       logger.debug('收到 WebSocket 訊息', { data });
-      
+
       // 處理訂閱請求
       if (data.type === 'subscribe') {
         ws.send(JSON.stringify({
@@ -148,7 +159,11 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    logger.info('WebSocket 客戶端已斷開連接');
+    if ((ws as any).isMediaServer) {
+      logger.info('📡 Media Server WebSocket 已斷開連接');
+    } else {
+      logger.info('WebSocket 客戶端已斷開連接');
+    }
   });
 
   ws.on('error', (error) => {
@@ -302,5 +317,49 @@ async function gracefulShutdown() {
 
 // 啟動
 startServer();
+
+// ==========================================
+// Media Server 通知函數
+// ==========================================
+
+/**
+ * 通知 Media Server: Stage 已創建
+ */
+export function notifyMediaServerStageCreated(stageArn: string): void {
+  wss.clients.forEach((client) => {
+    if ((client as any).isMediaServer && client.readyState === 1) {
+      client.send(JSON.stringify({
+        type: 'stage_created',
+        data: {
+          stageArn,
+          timestamp: new Date().toISOString(),
+        },
+      }));
+      logger.info('📤 通知 Media Server: Stage 已創建', {
+        stageId: stageArn.substring(stageArn.length - 12),
+      });
+    }
+  });
+}
+
+/**
+ * 通知 Media Server: Stage 已刪除
+ */
+export function notifyMediaServerStageDeleted(stageArn: string): void {
+  wss.clients.forEach((client) => {
+    if ((client as any).isMediaServer && client.readyState === 1) {
+      client.send(JSON.stringify({
+        type: 'stage_deleted',
+        data: {
+          stageArn,
+          timestamp: new Date().toISOString(),
+        },
+      }));
+      logger.info('📤 通知 Media Server: Stage 已刪除', {
+        stageId: stageArn.substring(stageArn.length - 12),
+      });
+    }
+  });
+}
 
 export { app, httpServer, wss };
