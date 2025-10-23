@@ -95,9 +95,16 @@ async function testGeneratePublisherToken() {
     if (response.data.success) {
       testPublisherToken = response.data.data;
       log('✅ 主播 Token 生成成功', 'green');
-      console.log('Token:', testPublisherToken.token.substring(0, 50) + '...');
-      console.log('Participant ID:', testPublisherToken.participantId);
-      console.log('Stage ARN:', testPublisherToken.stageArn);
+      console.log('');
+      console.log('📋 主播資訊：');
+      console.log('  - Participant ID:', testPublisherToken.participantId);
+      console.log('  - User ID:', testPublisherToken.userId);
+      console.log('  - Stage ARN:', testPublisherToken.stageArn);
+      console.log('  - Token 有效期:', testPublisherToken.expiresIn, '秒');
+      console.log('');
+      console.log('🔑 完整 Token（用於推流）：');
+      console.log(testPublisherToken.token);
+      console.log('');
       return true;
     } else {
       log('❌ 主播 Token 生成失敗', 'red');
@@ -360,6 +367,57 @@ async function runTests() {
   // 步驟 1
   if (await testGeneratePublisherToken()) {
     results.passed++;
+
+    // ⏰ 等待用戶設置推流
+    logSection('⏰ 等待推流設置');
+    log('已生成主播 Token，請在 60 秒內開始推流...', 'cyan');
+    console.log('');
+    console.log('📺 OBS 推流設置步驟：');
+    console.log('1. 打開 OBS Studio');
+    console.log('2. 設定 → 串流');
+    console.log('3. 服務：選擇「WHIP」');
+    console.log('4. 服務器：從 Stage ARN 提取區域端點');
+    console.log('   例如：https://REGION.global-contribute.live-video.net');
+    console.log('5. Bearer Token：複製上方顯示的完整 Token');
+    console.log('6. 點擊「開始串流」');
+    console.log('');
+    log('💡 提示：', 'yellow');
+    console.log('   - 如果不想推流，測試會自動跳過 Replication 步驟');
+    console.log('   - 如果要完整測試 Replication，請務必開始推流');
+    console.log('   - 推流設置完成後，按 Enter 鍵立即繼續');
+    console.log('   - 或等待 60 秒自動繼續');
+    console.log('');
+
+    // 倒計時 60 秒（可以按 Enter 跳過）
+    let skipWait = false;
+    const readline = require('readline');
+
+    // 設置 stdin 為 raw 模式以捕獲按鍵
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+      process.stdin.once('data', () => {
+        skipWait = true;
+      });
+    }
+
+    for (let i = 60; i > 0 && !skipWait; i--) {
+      process.stdout.write(`\r⏳ 倒計時: ${i} 秒... （按 Enter 跳過）`);
+      await sleep(1000);
+    }
+
+    // 恢復 stdin
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+    }
+
+    console.log('\n');
+    if (skipWait) {
+      log('✅ 用戶跳過等待，繼續測試...', 'green');
+    } else {
+      log('✅ 等待完成，繼續測試...', 'green');
+    }
     await sleep(1000);
   } else {
     results.failed++;
