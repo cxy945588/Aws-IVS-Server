@@ -237,8 +237,9 @@ export class StageAutoScalingService {
 
         // ✅ 新功能：啟動 Participant Replication
         // 將主播從源 Stage 複製到新 Stage
+        let publisherInfo: any = null;
         try {
-          const publisherInfo = await redis.getPublisherInfo();
+          publisherInfo = await redis.getPublisherInfo();
 
           if (publisherInfo && publisherInfo.participantId) {
             logger.info('🔄 開始啟動 Participant Replication', {
