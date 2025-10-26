@@ -191,20 +191,53 @@ export class RedisService {
   // 業務邏輯方法
   // ==========================================
 
+  // 檢查用戶是否已在 Stage 中
+  async isViewerInStage(userId: string, stageArn: string): Promise<boolean> {
+    const key = `stage:${stageArn}:viewers`;
+    const isMember = await this.sismember(key, userId);
+    return isMember === 1;
+  }
+
   // 增加觀眾數
   async incrementViewerCount(stageId?: string): Promise<number> {
     const pipeline = this.client.pipeline();
-    
+
     // 增加總觀眾數
     pipeline.incr(this.getPrefixedKey(REDIS_KEYS.TOTAL_VIEWERS));
-    
+
     // 如果指定了 Stage，也增加該 Stage 的觀眾數
     if (stageId) {
       pipeline.incr(this.getPrefixedKey(REDIS_KEYS.VIEWER_COUNT(stageId)));
     }
-    
+
     const results = await pipeline.exec();
     return results?.[0]?.[1] as number || 0;
+  }
+
+  // 修復: 只有當用戶不在 Stage 中時才增加計數（去重）
+  async incrementViewerCountIfNew(userId: string, stageArn: string): Promise<{ incremented: boolean; count: number }> {
+    // 檢查用戶是否已在 Stage 中
+    const isExisting = await this.isViewerInStage(userId, stageArn);
+
+    if (isExisting) {
+      // 用戶已存在，不增加計數，只返回當前計數
+      const count = await this.getStageViewerCount(stageArn);
+      logger.debug('用戶已在 Stage 中，跳過計數增加', {
+        userId,
+        stageArn: stageArn.substring(stageArn.length - 12),
+        currentCount: count,
+      });
+      return { incremented: false, count };
+    }
+
+    // 用戶不存在，增加計數
+    const count = await this.incrementViewerCount(stageArn);
+    logger.debug('新用戶加入 Stage，計數已增加', {
+      userId,
+      stageArn: stageArn.substring(stageArn.length - 12),
+      newCount: count,
+    });
+    return { incremented: true, count };
   }
 
   // 減少觀眾數
