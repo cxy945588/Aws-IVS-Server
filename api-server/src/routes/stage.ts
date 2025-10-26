@@ -16,6 +16,7 @@ import {
   UpdateStageCommand,
 } from '@aws-sdk/client-ivs-realtime';
 import { RedisService } from '../services/RedisService';
+import { IVSService } from '../services/IVSService';
 import { logger } from '../utils/logger';
 import { HTTP_STATUS, ERROR_CODES, STAGE_CONFIG } from '../utils/constants';
 import {
@@ -315,6 +316,192 @@ router.delete('/:stageArn', async (req: Request, res: Response) => {
     }
 
     sendInternalError(res, error, 'Stage 刪除失敗');
+  }
+});
+
+/**
+ * POST /api/stage/replication/start
+ * 手動啟動 Participant Replication
+ * 將主播從源 Stage 複製到目標 Stage
+ */
+router.post('/replication/start', async (req: Request, res: Response) => {
+  try {
+    const { sourceStageArn, destinationStageArn, participantId } = req.body;
+
+    // 驗證參數
+    const missingFields = [];
+    if (!sourceStageArn) missingFields.push('sourceStageArn');
+    if (!destinationStageArn) missingFields.push('destinationStageArn');
+    if (!participantId) missingFields.push('participantId');
+
+    if (missingFields.length > 0) {
+      return sendValidationError(res, '缺少必要參數', missingFields);
+    }
+
+    logger.info('收到手動啟動 Participant Replication 請求', {
+      participantId,
+      sourceStage: sourceStageArn.substring(sourceStageArn.length - 12),
+      destStage: destinationStageArn.substring(destinationStageArn.length - 12),
+    });
+
+    // 啟動 Replication
+    const ivsService = new IVSService();
+    await ivsService.startParticipantReplication(
+      sourceStageArn,
+      destinationStageArn,
+      participantId
+    );
+
+    // 記錄狀態到 Redis
+    const redis = RedisService.getInstance();
+    await redis.setReplicationStatus(sourceStageArn, destinationStageArn, participantId);
+
+    sendSuccess(res, {
+      message: 'Participant Replication 已啟動',
+      sourceStageArn,
+      destinationStageArn,
+      participantId,
+      startedAt: new Date().toISOString(),
+    });
+
+    logger.info('✅ Participant Replication 已手動啟動', {
+      participantId,
+      sourceStage: sourceStageArn.substring(sourceStageArn.length - 12),
+      destStage: destinationStageArn.substring(destinationStageArn.length - 12),
+    });
+  } catch (error: any) {
+    logger.error('❌ 啟動 Participant Replication 失敗', { error: error.message });
+
+    if (error.message.includes('SDK')) {
+      return sendError(
+        res,
+        ERROR_CODES.INTERNAL_ERROR,
+        error.message,
+        HTTP_STATUS.SERVICE_UNAVAILABLE
+      );
+    }
+
+    sendInternalError(res, error, 'Participant Replication 啟動失敗');
+  }
+});
+
+/**
+ * DELETE /api/stage/replication/stop
+ * 停止 Participant Replication
+ */
+router.delete('/replication/stop', async (req: Request, res: Response) => {
+  try {
+    const { sourceStageArn, destinationStageArn, participantId } = req.body;
+
+    // 驗證參數
+    const missingFields = [];
+    if (!sourceStageArn) missingFields.push('sourceStageArn');
+    if (!destinationStageArn) missingFields.push('destinationStageArn');
+    if (!participantId) missingFields.push('participantId');
+
+    if (missingFields.length > 0) {
+      return sendValidationError(res, '缺少必要參數', missingFields);
+    }
+
+    logger.info('收到停止 Participant Replication 請求', {
+      participantId,
+      sourceStage: sourceStageArn.substring(sourceStageArn.length - 12),
+      destStage: destinationStageArn.substring(destinationStageArn.length - 12),
+    });
+
+    // 停止 Replication
+    const ivsService = new IVSService();
+    await ivsService.stopParticipantReplication(
+      sourceStageArn,
+      destinationStageArn,
+      participantId
+    );
+
+    // 清除 Redis 狀態
+    const redis = RedisService.getInstance();
+    await redis.clearReplicationStatus(destinationStageArn);
+
+    sendSuccess(res, {
+      message: 'Participant Replication 已停止',
+      sourceStageArn,
+      destinationStageArn,
+      participantId,
+      stoppedAt: new Date().toISOString(),
+    });
+
+    logger.info('✅ Participant Replication 已停止', {
+      participantId,
+      sourceStage: sourceStageArn.substring(sourceStageArn.length - 12),
+      destStage: destinationStageArn.substring(destinationStageArn.length - 12),
+    });
+  } catch (error: any) {
+    logger.error('❌ 停止 Participant Replication 失敗', { error: error.message });
+    sendInternalError(res, error, 'Participant Replication 停止失敗');
+  }
+});
+
+/**
+ * GET /api/stage/replication/status/:stageArn
+ * 查詢特定 Stage 的 Participant Replication 狀態
+ */
+router.get('/replication/status/:stageArn', async (req: Request, res: Response) => {
+  try {
+    const { stageArn } = req.params;
+
+    const redis = RedisService.getInstance();
+    const replicationStatus = await redis.getReplicationStatus(stageArn);
+
+    if (!replicationStatus) {
+      return sendSuccess(res, {
+        stageArn,
+        hasReplication: false,
+        message: '此 Stage 沒有啟動 Participant Replication',
+      });
+    }
+
+    sendSuccess(res, {
+      stageArn,
+      hasReplication: true,
+      replicationInfo: replicationStatus,
+    });
+
+    logger.info('✅ Replication 狀態已返回', {
+      stageArn: stageArn.substring(stageArn.length - 12),
+    });
+  } catch (error: any) {
+    logger.error('❌ 查詢 Replication 狀態失敗', { error: error.message });
+    sendInternalError(res, error, '查詢 Replication 狀態失敗');
+  }
+});
+
+/**
+ * GET /api/stage/replication/publisher-info
+ * 獲取當前主播資訊（包含 participantId）
+ */
+router.get('/replication/publisher-info', async (req: Request, res: Response) => {
+  try {
+    const redis = RedisService.getInstance();
+    const publisherInfo = await redis.getPublisherInfo();
+
+    if (!publisherInfo) {
+      return sendSuccess(res, {
+        hasPublisher: false,
+        message: '當前沒有主播在線',
+      });
+    }
+
+    sendSuccess(res, {
+      hasPublisher: true,
+      publisherInfo,
+    });
+
+    logger.info('✅ 主播資訊已返回', {
+      participantId: publisherInfo.participantId,
+      userId: publisherInfo.userId,
+    });
+  } catch (error: any) {
+    logger.error('❌ 獲取主播資訊失敗', { error: error.message });
+    sendInternalError(res, error, '獲取主播資訊失敗');
   }
 });
 
