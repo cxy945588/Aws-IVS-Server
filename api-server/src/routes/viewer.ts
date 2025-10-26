@@ -39,10 +39,11 @@ router.post('/rejoin', async (req: Request, res: Response) => {
     const viewerRecord = ViewerRecordService.getInstance();
 
     // 1. 更新 Redis（即時數據）
+    // 修復: 只有當用戶不在 Stage 中時才增加計數（防止重複計數）
+    const countResult = await redis.incrementViewerCountIfNew(userId, stageArn);
     await heartbeat.recordViewerJoin(userId, stageArn, participantId);
-    await redis.incrementViewerCount(stageArn);
 
-    const viewerCount = await redis.getStageViewerCount(stageArn);
+    const viewerCount = countResult.count;
 
     // 2. 寫入資料庫（持久化）- 異步執行，不阻塞響應
     viewerRecord.recordJoin({
@@ -61,6 +62,7 @@ router.post('/rejoin', async (req: Request, res: Response) => {
       participantId,
       stageArn: stageArn.substring(stageArn.length - 12),
       currentViewers: viewerCount,
+      isNewViewer: countResult.incremented,
     });
 
     // 3. 立即返回響應
