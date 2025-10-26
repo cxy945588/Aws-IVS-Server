@@ -84,8 +84,8 @@ export class StageAutoScalingService {
 
   /**
    * 檢查並執行擴展操作
-   * 
-   * 修復: 添加總觀眾數驗證，避免 Redis 資料錯誤導致誤判
+   *
+   * 修復: 改進擴展邏輯，基於總使用率而非單個 Stage，避免重複觸發擴展
    */
   private async checkAndScale(): Promise<void> {
     try {
@@ -93,8 +93,8 @@ export class StageAutoScalingService {
 
       // 獲取所有活躍的 Stage
       const stages = await this.listAllStages();
-      
-      // ✅ 新增：計算總觀眾數
+
+      // ✅ 計算總觀眾數和每個 Stage 的狀態
       let totalViewers = 0;
       const stageStats: Array<{arn: string; name: string; viewers: number}> = [];
 
@@ -102,7 +102,7 @@ export class StageAutoScalingService {
         const stageArn = stage.arn;
         const viewerCount = await redis.getStageViewerCount(stageArn);
         totalViewers += viewerCount;
-        
+
         stageStats.push({
           arn: stageArn.substring(stageArn.length - 12),
           name: stage.name || 'unnamed',
@@ -110,13 +110,19 @@ export class StageAutoScalingService {
         });
       }
 
+      // 計算總容量和使用率
+      const totalCapacity = stages.length * STAGE_CONFIG.SCALE_UP_THRESHOLD;
+      const utilizationRate = totalCapacity > 0 ? (totalViewers / totalCapacity) : 0;
+
       logger.debug('📊 Stage 檢查摘要', {
         totalStages: stages.length,
         totalViewers,
+        totalCapacity,
+        utilizationRate: `${(utilizationRate * 100).toFixed(1)}%`,
         stages: stageStats,
       });
 
-      // ✅ 新增：安全檢查 - 如果總觀眾數異常高，可能是 Redis 資料錯誤
+      // ✅ 安全檢查 - 如果總觀眾數異常高，可能是 Redis 資料錯誤
       if (totalViewers > 1000) {
         logger.warn('⚠️ 檢測到異常的觀眾數，可能是 Redis 資料錯誤', {
           totalViewers,
@@ -125,24 +131,43 @@ export class StageAutoScalingService {
         return; // 停止自動擴展，避免創建過多 Stage
       }
 
-      // 處理每個 Stage
+      // ✅ 修復：基於總使用率判斷是否需要擴展（Scale Up）
+      // 只有當使用率 > 80% 時才擴展，且只創建一個新 Stage
+      if (utilizationRate > 0.8) {
+        // 檢查是否已達到 Stage 數量上限
+        if (stages.length >= STAGE_CONFIG.MAX_STAGES) {
+          logger.warn('⚠️ 已達到 Stage 數量上限，無法自動擴展', {
+            currentStages: stages.length,
+            maxStages: STAGE_CONFIG.MAX_STAGES,
+            utilizationRate: `${(utilizationRate * 100).toFixed(1)}%`,
+          });
+        } else {
+          logger.info('🚀 總使用率超過閾值，需要擴展', {
+            totalViewers,
+            totalCapacity,
+            utilizationRate: `${(utilizationRate * 100).toFixed(1)}%`,
+            threshold: '80%',
+          });
+
+          // 找到觀眾數最多的 Stage 作為源 Stage
+          const sourceStage = stageStats.reduce((max, current) =>
+            current.viewers > max.viewers ? current : max
+          );
+
+          await this.scaleUp(
+            stages.find(s => s.arn.includes(sourceStage.arn))!.arn,
+            totalViewers
+          );
+        }
+      }
+
+      // 處理 Stage 縮減（Scale Down）
       for (const stage of stages) {
         const stageArn = stage.arn;
         const viewerCount = await redis.getStageViewerCount(stageArn);
 
-        // 檢查是否需要擴展（Scale Up）
-        if (viewerCount >= STAGE_CONFIG.SCALE_UP_THRESHOLD) {
-          // ✅ 新增：再次驗證，避免誤判
-          logger.info('🔍 檢測到需要擴展', {
-            stageArn: stageArn.substring(stageArn.length - 12),
-            viewerCount,
-            threshold: STAGE_CONFIG.SCALE_UP_THRESHOLD,
-          });
-          await this.scaleUp(stageArn, viewerCount);
-        }
-
-        // 檢查是否需要縮減（Scale Down）
-        if (viewerCount <= STAGE_CONFIG.SCALE_DOWN_THRESHOLD && 
+        // 檢查是否需要縮減
+        if (viewerCount <= STAGE_CONFIG.SCALE_DOWN_THRESHOLD &&
             stageArn !== process.env.MASTER_STAGE_ARN) {
           await this.scaleDown(stageArn, viewerCount);
         }
@@ -154,51 +179,13 @@ export class StageAutoScalingService {
 
   /**
    * 擴展：創建新 Stage
-   * 
-   * 修復: 正確的擴展邏輯 - 基於總容量 vs 總觀眾數
+   *
+   * 修復: 移除重複的檢查邏輯，由 checkAndScale() 統一控制擴展時機
    */
-  private async scaleUp(stageArn: string, currentViewerCount: number): Promise<void> {
+  private async scaleUp(sourceStageArn: string, totalViewers: number): Promise<void> {
     try {
       const redis = RedisService.getInstance();
-
-      // 檢查是否已達到 Stage 數量上限
       const stages = await this.listAllStages();
-      if (stages.length >= STAGE_CONFIG.MAX_STAGES) {
-        logger.warn('⚠️ 已達到 Stage 數量上限，無法自動擴展', {
-          currentStages: stages.length,
-          maxStages: STAGE_CONFIG.MAX_STAGES,
-        });
-        return;
-      }
-
-      // ✅ 新增：檢查是否真的需要擴展
-      // 計算總容量 vs 總觀眾數
-      let totalViewers = 0;
-      for (const stage of stages) {
-        const count = await redis.getStageViewerCount(stage.arn);
-        totalViewers += count;
-      }
-      
-      const totalCapacity = stages.length * 50;
-      const utilizationRate = totalCapacity > 0 ? (totalViewers / totalCapacity) : 0;
-      
-      // 只有當使用率 > 60% 才擴展
-      if (utilizationRate < 0.6) {
-        logger.debug('📊 使用率未達擴展門檻，跳過擴展', {
-          totalViewers,
-          totalCapacity,
-          utilizationRate: `${(utilizationRate * 100).toFixed(1)}%`,
-          threshold: '90%',
-        });
-        return;
-      }
-      
-      logger.info('🚀 需要擴展！', {
-        totalViewers,
-        totalCapacity,
-        utilizationRate: `${(utilizationRate * 100).toFixed(1)}%`,
-        currentStages: stages.length,
-      });
 
       // 創建新 Stage
       const newStageName = `auto-stage-${Date.now()}`;
@@ -207,7 +194,7 @@ export class StageAutoScalingService {
         tags: {
           AutoScaled: 'true',
           CreatedAt: new Date().toISOString(),
-          ParentStage: stageArn,
+          ParentStage: sourceStageArn,
           Environment: process.env.NODE_ENV || 'development',
         },
       });
@@ -223,15 +210,15 @@ export class StageAutoScalingService {
           arn: newStageArn, // ✅ 儲存完整 ARN
           autoScaled: true,
           createdAt: new Date().toISOString(),
-          parentStage: stageArn,
+          parentStage: sourceStageArn,
         });
 
         logger.info('✅ 自動擴展：創建新 Stage', {
           newStageArn: newStageArn.substring(newStageArn.length - 12),
           newStageName,
-          reason: `使用率 ${(utilizationRate * 100).toFixed(1)}% > 90%`,
-          totalViewersNow: totalViewers,
-          newTotalCapacity: (stages.length + 1) * 50,
+          sourceStageArn: sourceStageArn.substring(sourceStageArn.length - 12),
+          totalViewers: totalViewers,
+          newTotalCapacity: (stages.length + 1) * STAGE_CONFIG.SCALE_UP_THRESHOLD,
           totalStages: stages.length + 1,
         });
 

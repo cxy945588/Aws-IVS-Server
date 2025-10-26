@@ -138,11 +138,11 @@ async function testAutoScaleUp(): Promise<TestResult> {
         },
       };
     } else {
-      // 可能是使用率未达到 60%，或者其他原因
+      // 可能是使用率未达到 80%，或者其他原因
       console.log(
         '⚠',
         name,
-        '- 未创建新 Stage（可能使用率未达到 60% 或已有足够容量）'
+        '- 未创建新 Stage（可能使用率未达到 80% 或已有足够容量）'
       );
       return {
         name,
@@ -153,7 +153,7 @@ async function testAutoScaleUp(): Promise<TestResult> {
           finalStageCount,
           newStagesCreated: 0,
           viewersAdded: viewersToAdd,
-          note: '未触发扩展可能是因为总使用率 < 60%',
+          note: '未触发扩展可能是因为总使用率 < 80%',
         },
       };
     }
