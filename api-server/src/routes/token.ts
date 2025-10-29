@@ -174,12 +174,9 @@ router.post('/viewer', async (req: Request, res: Response) => {
     // 生成 Token
     const token = await getIVSService().createViewerToken(userId, targetStageArn);
 
-    // 修復: 只有當用戶不在 Stage 中時才增加計數（防止重複計數）
-    const countResult = await redis.incrementViewerCountIfNew(userId, targetStageArn);
-
-    // 自動記錄觀眾加入（用於心跳追蹤）
+    // 原子性記錄觀眾加入（同時處理 Session 和計數）
     const heartbeat = ViewerHeartbeatService.getInstance();
-    await heartbeat.recordViewerJoin(userId, targetStageArn, token.participantId);
+    const joinResult = await heartbeat.recordViewerJoin(userId, targetStageArn, token.participantId);
 
     // 返回資訊
     sendSuccess(res, {
@@ -190,15 +187,16 @@ router.post('/viewer', async (req: Request, res: Response) => {
       capabilities: token.capabilities,
       expiresAt: token.expiresAt,
       expiresIn: Math.floor((token.expiresAt.getTime() - Date.now()) / 1000),
-      currentViewers: countResult.count,
+      currentViewers: joinResult.count,
+      isNewViewer: joinResult.isNew,
     });
 
     logger.info('✅ 觀眾 Token 生成成功', {
       userId,
       participantId: token.participantId,
       stageArn: targetStageArn.substring(targetStageArn.length - 12),
-      viewerCount: countResult.count,
-      isNewViewer: countResult.incremented,
+      viewerCount: joinResult.count,
+      isNewViewer: joinResult.isNew,
     });
   } catch (error: any) {
     logger.error('❌ 觀眾 Token 生成失敗', { error: error.message });

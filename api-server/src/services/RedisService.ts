@@ -191,101 +191,169 @@ export class RedisService {
   // 業務邏輯方法
   // ==========================================
 
-  // 檢查用戶是否已在 Stage 中
+  // ==========================================
+  // 觀眾管理 - 基於 Set 的原子性操作
+  // ==========================================
+
+  /**
+   * 檢查用戶是否已在 Stage 中
+   */
   async isViewerInStage(userId: string, stageArn: string): Promise<boolean> {
     const key = `stage:${stageArn}:viewers`;
     const isMember = await this.sismember(key, userId);
     return isMember === 1;
   }
 
-  // 增加觀眾數
-  async incrementViewerCount(stageId?: string): Promise<number> {
-    const pipeline = this.client.pipeline();
+  /**
+   * 原子性添加觀眾到 Stage
+   * 使用 SADD 的返回值判斷是否為新用戶
+   * 返回: { isNew: 是否為新用戶, count: 當前觀眾數 }
+   */
+  async addViewerToStage(userId: string, stageArn: string): Promise<{ isNew: boolean; count: number }> {
+    const setKey = `stage:${stageArn}:viewers`;
+    const prefixedKey = this.getPrefixedKey(setKey);
 
-    // 增加總觀眾數
-    pipeline.incr(this.getPrefixedKey(REDIS_KEYS.TOTAL_VIEWERS));
+    // SADD 返回實際添加的成員數量
+    // 1 = 新成員, 0 = 已存在
+    const added = await this.client.sadd(prefixedKey, userId);
+    const isNew = added === 1;
 
-    // 如果指定了 Stage，也增加該 Stage 的觀眾數
-    if (stageId) {
-      pipeline.incr(this.getPrefixedKey(REDIS_KEYS.VIEWER_COUNT(stageId)));
-    }
+    // 獲取當前觀眾數（直接從 Set 獲取）
+    const count = await this.client.scard(prefixedKey);
 
-    const results = await pipeline.exec();
-    return results?.[0]?.[1] as number || 0;
-  }
-
-  // 修復: 只有當用戶不在 Stage 中時才增加計數（去重）
-  async incrementViewerCountIfNew(userId: string, stageArn: string): Promise<{ incremented: boolean; count: number }> {
-    // 檢查用戶是否已在 Stage 中
-    const isExisting = await this.isViewerInStage(userId, stageArn);
-
-    if (isExisting) {
-      // 用戶已存在，不增加計數，只返回當前計數
-      const count = await this.getStageViewerCount(stageArn);
-      logger.debug('用戶已在 Stage 中，跳過計數增加', {
+    if (isNew) {
+      logger.debug('✅ 新觀眾加入 Stage', {
         userId,
         stageArn: stageArn.substring(stageArn.length - 12),
-        currentCount: count,
+        count,
       });
-      return { incremented: false, count };
+    } else {
+      logger.debug('👤 觀眾已在 Stage 中', {
+        userId,
+        stageArn: stageArn.substring(stageArn.length - 12),
+        count,
+      });
     }
 
-    // 用戶不存在，增加計數
-    const count = await this.incrementViewerCount(stageArn);
-    logger.debug('新用戶加入 Stage，計數已增加', {
-      userId,
-      stageArn: stageArn.substring(stageArn.length - 12),
-      newCount: count,
-    });
-    return { incremented: true, count };
+    return { isNew, count };
   }
 
-  // 減少觀眾數
-  async decrementViewerCount(stageId?: string): Promise<number> {
-    const pipeline = this.client.pipeline();
-    
-    // 減少總觀眾數
-    pipeline.decr(this.getPrefixedKey(REDIS_KEYS.TOTAL_VIEWERS));
-    
-    // 如果指定了 Stage，也減少該 Stage 的觀眾數
-    if (stageId) {
-      pipeline.decr(this.getPrefixedKey(REDIS_KEYS.VIEWER_COUNT(stageId)));
+  /**
+   * 原子性移除觀眾從 Stage
+   * 返回: { removed: 是否成功移除, count: 當前觀眾數 }
+   */
+  async removeViewerFromStage(userId: string, stageArn: string): Promise<{ removed: boolean; count: number }> {
+    const setKey = `stage:${stageArn}:viewers`;
+    const prefixedKey = this.getPrefixedKey(setKey);
+
+    // SREM 返回實際移除的成員數量
+    // 1 = 成功移除, 0 = 不存在
+    const removed = await this.client.srem(prefixedKey, userId);
+    const wasRemoved = removed === 1;
+
+    // 獲取當前觀眾數
+    const count = await this.client.scard(prefixedKey);
+
+    if (wasRemoved) {
+      logger.debug('👋 觀眾離開 Stage', {
+        userId,
+        stageArn: stageArn.substring(stageArn.length - 12),
+        count,
+      });
+    } else {
+      logger.warn('⚠️ 嘗試移除不存在的觀眾', {
+        userId,
+        stageArn: stageArn.substring(stageArn.length - 12),
+      });
     }
-    
-    const results = await pipeline.exec();
-    return results?.[0]?.[1] as number || 0;
+
+    return { removed: wasRemoved, count };
   }
 
-  // 獲取總觀眾數
-  // 修復: 添加錯誤處理
+  /**
+   * 獲取 Stage 的觀眾列表
+   */
+  async getStageViewers(stageArn: string): Promise<string[]> {
+    const setKey = `stage:${stageArn}:viewers`;
+    return await this.smembers(setKey);
+  }
+
+  /**
+   * 獲取 Stage 觀眾數（直接從 Set 計算）
+   * 這是唯一真相來源，不再使用獨立計數器
+   */
+  async getStageViewerCount(stageArn: string): Promise<number> {
+    try {
+      const setKey = `stage:${stageArn}:viewers`;
+      const count = await this.scard(setKey);
+      return count;
+    } catch (error: any) {
+      logger.error('獲取 Stage 觀眾數失敗', {
+        stageArn: stageArn.substring(stageArn.length - 12),
+        error: error.message,
+      });
+      return 0;
+    }
+  }
+
+  /**
+   * 獲取總觀眾數（所有 Stage 的總和）
+   */
   async getTotalViewerCount(): Promise<number> {
     try {
-      const count = await this.get(REDIS_KEYS.TOTAL_VIEWERS);
-      return parseInt(count || '0', 10);
+      // 獲取所有活躍 Stage
+      const stageArns = await this.getActiveStages();
+
+      // 計算總和
+      let total = 0;
+      for (const stageArn of stageArns) {
+        const count = await this.getStageViewerCount(stageArn);
+        total += count;
+      }
+
+      return total;
     } catch (error: any) {
-      logger.warn('Redis 資料類型錯誤，重置總觀眾數', {
-        error: error.message,
-      });
-      await this.set(REDIS_KEYS.TOTAL_VIEWERS, '0');
+      logger.error('獲取總觀眾數失敗', { error: error.message });
       return 0;
     }
   }
 
-  // 獲取 Stage 觀眾數
-  // 修復: 添加錯誤處理，防止 WRONGTYPE 錯誤
-  async getStageViewerCount(stageId: string): Promise<number> {
-    try {
-      const count = await this.get(REDIS_KEYS.VIEWER_COUNT(stageId));
-      return parseInt(count || '0', 10);
-    } catch (error: any) {
-      // 資料類型錯誤時，重置為 0
-      logger.warn('Redis 資料類型錯誤，重置計數器', {
-        key: REDIS_KEYS.VIEWER_COUNT(stageId),
-        error: error.message,
-      });
-      await this.set(REDIS_KEYS.VIEWER_COUNT(stageId), '0');
+  // ==========================================
+  // 已棄用的方法（保留向後兼容，但內部重定向到新方法）
+  // ==========================================
+
+  /**
+   * @deprecated 使用 addViewerToStage 代替
+   */
+  async incrementViewerCountIfNew(userId: string, stageArn: string): Promise<{ incremented: boolean; count: number }> {
+    const result = await this.addViewerToStage(userId, stageArn);
+    return { incremented: result.isNew, count: result.count };
+  }
+
+  /**
+   * @deprecated 使用 removeViewerFromStage 代替
+   */
+  async decrementViewerCount(stageId?: string): Promise<number> {
+    if (!stageId) {
+      logger.warn('decrementViewerCount 被呼叫但沒有提供 stageId');
       return 0;
     }
+    // 這個方法不應該被直接呼叫，因為我們不知道要移除哪個用戶
+    // 返回當前計數
+    return await this.getStageViewerCount(stageId);
+  }
+
+  /**
+   * @deprecated 使用 addViewerToStage 代替
+   */
+  async incrementViewerCount(stageId?: string): Promise<number> {
+    if (!stageId) {
+      logger.warn('incrementViewerCount 被呼叫但沒有提供 stageId');
+      return 0;
+    }
+    // 這個方法不應該被直接呼叫，因為我們不知道要添加哪個用戶
+    // 返回當前計數
+    return await this.getStageViewerCount(stageId);
   }
 
   // 設定 Stage 資訊
@@ -442,38 +510,79 @@ export class RedisService {
 
   /**
    * 清理無效的 Redis key
-   * 修復: 檢查並修正資料類型錯誤
+   * 包括：
+   * 1. 舊的獨立計數器 keys (viewers:arn:..., total_viewers)
+   * 2. 類型不符的 keys
+   * 3. 空的 Set
    */
   public async cleanupInvalidKeys(): Promise<void> {
     try {
       const prefix = this.getPrefixedKey('');
       const keys = await this.client.keys(`${prefix}*`);
-      
+
       let cleanedCount = 0;
-      
+      const cleanupReasons: Record<string, number> = {
+        deprecated: 0,
+        wrongType: 0,
+        emptySet: 0,
+      };
+
       for (const key of keys) {
         try {
           const type = await this.client.type(key);
-          
-          // 檢查計數器 key 是否為字串類型
-          if (key.includes('viewer:count:') && type !== 'string') {
-            logger.warn('發現類型不符的 key，刪除', { key, type });
+          const shortKey = key.replace(prefix, '');
+
+          // 1. 清理舊的獨立計數器 (已棄用，改用 Set 的 SCARD)
+          if (shortKey.startsWith('viewers:') && type === 'string') {
+            // 這是舊的計數器，不是 Set
+            logger.warn('發現舊的計數器 key，刪除', { key: shortKey });
             await this.client.del(key);
             cleanedCount++;
+            cleanupReasons.deprecated++;
+            continue;
           }
-          
-          if (key.includes('total:viewers') && type !== 'string') {
-            logger.warn('發現類型不符的 key，刪除', { key, type });
+
+          if (shortKey === 'total_viewers' && type === 'string') {
+            logger.warn('發現舊的總計數器 key，刪除', { key: shortKey });
             await this.client.del(key);
             cleanedCount++;
+            cleanupReasons.deprecated++;
+            continue;
+          }
+
+          // 2. 檢查類型不符的 key
+          if (shortKey.includes(':viewers') && type !== 'set') {
+            logger.warn('發現類型不符的觀眾集合 key，刪除', { key: shortKey, type });
+            await this.client.del(key);
+            cleanedCount++;
+            cleanupReasons.wrongType++;
+            continue;
+          }
+
+          // 3. 清理空的 Set（可選）
+          if (type === 'set' && shortKey.includes(':viewers')) {
+            const count = await this.client.scard(key);
+            if (count === 0) {
+              logger.debug('發現空的觀眾集合，刪除', { key: shortKey });
+              await this.client.del(key);
+              cleanedCount++;
+              cleanupReasons.emptySet++;
+            }
           }
         } catch (error: any) {
           logger.error('清理 key 失敗', { key, error: error.message });
         }
       }
-      
+
       if (cleanedCount > 0) {
-        logger.info(`✅ Redis 清理完成，刪除 ${cleanedCount} 個無效 key`);
+        logger.info(`✅ Redis 清理完成`, {
+          total: cleanedCount,
+          deprecated: cleanupReasons.deprecated,
+          wrongType: cleanupReasons.wrongType,
+          emptySet: cleanupReasons.emptySet,
+        });
+      } else {
+        logger.debug('Redis 清理完成，沒有需要清理的 key');
       }
     } catch (error: any) {
       logger.error('Redis 清理失敗', { error: error.message });
