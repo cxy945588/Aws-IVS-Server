@@ -35,15 +35,10 @@ router.post('/rejoin', async (req: Request, res: Response) => {
     }
 
     const heartbeat = ViewerHeartbeatService.getInstance();
-    const redis = RedisService.getInstance();
     const viewerRecord = ViewerRecordService.getInstance();
 
-    // 1. 更新 Redis（即時數據）
-    // 修復: 只有當用戶不在 Stage 中時才增加計數（防止重複計數）
-    const countResult = await redis.incrementViewerCountIfNew(userId, stageArn);
-    await heartbeat.recordViewerJoin(userId, stageArn, participantId);
-
-    const viewerCount = countResult.count;
+    // 1. 更新 Redis（即時數據）- 原子性操作
+    const joinResult = await heartbeat.recordViewerJoin(userId, stageArn, participantId);
 
     // 2. 寫入資料庫（持久化）- 異步執行，不阻塞響應
     viewerRecord.recordJoin({
@@ -61,8 +56,8 @@ router.post('/rejoin', async (req: Request, res: Response) => {
       userId,
       participantId,
       stageArn: stageArn.substring(stageArn.length - 12),
-      currentViewers: viewerCount,
-      isNewViewer: countResult.incremented,
+      currentViewers: joinResult.count,
+      isNewViewer: joinResult.isNew,
     });
 
     // 3. 立即返回響應
@@ -70,7 +65,8 @@ router.post('/rejoin', async (req: Request, res: Response) => {
       userId,
       stageArn,
       participantId,
-      currentViewers: viewerCount,
+      currentViewers: joinResult.count,
+      isNewViewer: joinResult.isNew,
     }, HTTP_STATUS.OK, '重新加入成功');
   } catch (error: any) {
     logger.error('觀眾重新加入失敗', { error: error.message });

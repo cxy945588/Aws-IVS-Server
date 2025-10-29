@@ -1,6 +1,6 @@
 {
   "name": "ivs-api-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AWS IVS Real-time API Server",
   "main": "dist/index.js",
   "scripts": {

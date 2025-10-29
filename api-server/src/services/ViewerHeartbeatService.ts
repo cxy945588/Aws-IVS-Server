@@ -73,12 +73,13 @@ export class ViewerHeartbeatService {
 
   /**
    * 記錄觀眾加入
+   * 使用原子性操作確保觀眾被正確添加到 Set
    */
   public async recordViewerJoin(
     userId: string,
     stageArn: string,
     participantId: string
-  ): Promise<void> {
+  ): Promise<{ isNew: boolean; count: number }> {
     try {
       const session: ViewerSession = {
         userId,
@@ -88,19 +89,25 @@ export class ViewerHeartbeatService {
         lastHeartbeat: Date.now(),
       };
 
+      // 保存 Session 資訊（用於心跳檢測和觀看時長統計）
       const key = this.getViewerKey(userId, stageArn);
       await this.redis.set(key, JSON.stringify(session), this.HEARTBEAT_TIMEOUT * 2);
-      
-      // 加入到 Stage 的觀眾集合
-      await this.redis.sadd(`stage:${stageArn}:viewers`, userId);
 
-      logger.info('👤 觀眾加入', {
+      // 原子性加入到 Stage 的觀眾集合（這也會更新觀眾計數）
+      const result = await this.redis.addViewerToStage(userId, stageArn);
+
+      logger.info('👤 觀眾加入記錄', {
         userId,
         participantId,
         stageArn: stageArn.substring(stageArn.length - 12),
+        isNew: result.isNew,
+        currentCount: result.count,
       });
+
+      return result;
     } catch (error: any) {
       logger.error('記錄觀眾加入失敗', { error: error.message });
+      return { isNew: false, count: 0 };
     }
   }
 
@@ -136,34 +143,41 @@ export class ViewerHeartbeatService {
 
   /**
    * 記錄觀眾離開
+   * 使用原子性操作確保觀眾被正確移除
    */
-  public async recordViewerLeave(userId: string, stageArn: string): Promise<void> {
+  public async recordViewerLeave(userId: string, stageArn: string): Promise<{ removed: boolean; count: number }> {
     try {
       const key = this.getViewerKey(userId, stageArn);
       const sessionData = await this.redis.get(key);
 
+      let duration = 0;
+      let participantId = 'unknown';
+
       if (sessionData) {
         const session: ViewerSession = JSON.parse(sessionData);
-        const duration = Math.floor((Date.now() - session.joinedAt) / 1000);
-
-        logger.info('👋 觀眾離開', {
-          userId,
-          participantId: session.participantId,
-          stageArn: stageArn.substring(stageArn.length - 12),
-          watchDuration: `${duration}s`,
-        });
+        duration = Math.floor((Date.now() - session.joinedAt) / 1000);
+        participantId = session.participantId;
       }
+
+      // 原子性從 Stage 的觀眾集合移除（這也會更新觀眾計數）
+      const result = await this.redis.removeViewerFromStage(userId, stageArn);
 
       // 刪除 Session
       await this.redis.del(key);
-      
-      // 從 Stage 的觀眾集合移除
-      await this.redis.srem(`stage:${stageArn}:viewers`, userId);
-      
-      // 減少觀眾計數
-      await this.redis.decrementViewerCount(stageArn);
+
+      logger.info('👋 觀眾離開記錄', {
+        userId,
+        participantId,
+        stageArn: stageArn.substring(stageArn.length - 12),
+        watchDuration: `${duration}s`,
+        removed: result.removed,
+        currentCount: result.count,
+      });
+
+      return result;
     } catch (error: any) {
       logger.error('記錄觀眾離開失敗', { error: error.message });
+      return { removed: false, count: 0 };
     }
   }
 
